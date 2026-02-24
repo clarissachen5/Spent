@@ -2,3 +2,5 @@
 test("sanity check", () => {
   expect(1 + 4).toBe(5);
 });
+
+//test if merge to main is not allowed
