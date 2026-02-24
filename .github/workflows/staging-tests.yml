@@ -7,7 +7,8 @@ on:
     branches: ["develop", "main"]
 
 jobs:
-  test:
+  mobile-tests:
+    name: Mobile - Unit Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -21,10 +22,33 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/Spent/package-lock.json
 
-      - name: Install dependencies
+      - name: Install mobile dependencies
         working-directory: mobile/Spent
         run: npm ci
 
-      - name: Run tests
+      - name: Run mobile tests
         working-directory: mobile/Spent
+        run: npm run test:ci
+
+  backend-tests:
+    name: Backend - Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: spent-backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: spent-backend
+        run: npm ci
+
+      - name: Run backend tests
+        working-directory: spent-backend
         run: npm run test:ci
