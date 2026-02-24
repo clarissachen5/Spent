@@ -1,6 +1,6 @@
 // test to check ci is working
 test("sanity check", () => {
-  expect(1 + 1).toBe(2);
+  expect(1 + 4).toBe(5);
 });
 
-//test if direct push to main works
+//test if merge to main is not allowed
