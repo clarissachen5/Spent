@@ -1,0 +1,30 @@
+name: Staging - Unit Tests
+
+on:
+  push:
+    branches: ["develop"]
+  pull_request:
+    branches: ["develop"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/Spent/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mobile/Spent
+        run: npm ci
+
+      - name: Run tests
+        working-directory: mobile/Spent
+        run: npm run test:ci
