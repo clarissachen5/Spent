@@ -2,13 +2,9 @@
 A Predictive Spending Budgeting App
 
 **Technical Architechture:**
-Mobile Client (Expo + React Native + TypeScript)
-        ↓
-API Layer (FastAPI - Python)
-        ↓
-AI Service Layer (Ollama Llama 3B)
-        ↓
-Database Layer (Supabase - PostgreSQL)
+
+
+Mobile Client (Expo + React Native + TypeScript) -> API Layer (FastAPI - Python) -> AI Service Layer (Ollama Llama 3B) -> Database Layer (Supabase - PostgreSQL)
 
 
 **Technical dependancies installed for spent-frontend:**
