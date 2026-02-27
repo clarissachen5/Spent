@@ -12,9 +12,11 @@ export const unstable_settings = {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
+
   console.log('firebase instance:', firebase)
 
   //  write some console log to test firebase is working 
+
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
