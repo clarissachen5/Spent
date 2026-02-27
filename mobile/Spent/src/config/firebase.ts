@@ -1,11 +1,9 @@
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+// firebase.ts
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+import { initializeApp } from "firebase/app";
+import { Platform } from "react-native";
+
+// 🔥 Firebase config
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
   authDomain: "spent-e04c4.firebaseapp.com",
@@ -13,9 +11,21 @@ const firebaseConfig = {
   storageBucket: "spent-e04c4.firebasestorage.app",
   messagingSenderId: "647249410276",
   appId: "1:647249410276:web:ad13acfde23813869c14f1",
-  measurementId: "G-DF4J53PL31"
+  measurementId: "G-DF4J53PL31",
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+// Initialize Firebase (this part is GOOD)
+export const app = initializeApp(firebaseConfig);
+
+// ✅ Analytics: WEB ONLY
+export let analytics: any = null;
+
+if (Platform.OS === "web") {
+  // Dynamic import so native builds never include analytics
+  import("firebase/analytics").then(async ({ getAnalytics, isSupported }) => {
+    const supported = await isSupported();
+    if (supported) {
+      analytics = getAnalytics(app);
+    }
+  });
+}
