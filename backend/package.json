@@ -1,0 +1,12 @@
+{
+  "scripts": {
+    "test": "jest",
+    "test:ci": "jest --ci"
+  },
+  "devDependencies": {
+    "jest": "^30.2.0"
+  },
+  "dependencies": {
+    "expo": "^55.0.2"
+  }
+}
