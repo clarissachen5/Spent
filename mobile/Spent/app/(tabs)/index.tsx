@@ -7,7 +7,7 @@ import { HelloWave } from "@/components/hello-wave";
 import ParallaxScrollView from "@/components/parallax-scroll-view";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-
+import * as firebase from '../../src/config/firebase';
 // 1) Types for your backend responses
 type HealthResponse = {
   status: string;
@@ -31,6 +31,7 @@ async function fetchHealth(): Promise<HealthResponse> {
 }
 
 export default function HomeScreen() {
+  console.log('firebase instance:', firebase)
   // 3) Typed state for loading/data/error
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
