@@ -14,7 +14,7 @@ export default function SignUp() {
         onChangeText={setName}
         style={styles.input}
       />
-      <Link href="/dashboard">
+      <Link href="/(tabs)/dashboard">
         <Text style={styles.button}>Continue</Text>
       </Link>
     </View>
@@ -41,3 +41,4 @@ const styles = StyleSheet.create({
     width: "100%",
   },
 });
+
