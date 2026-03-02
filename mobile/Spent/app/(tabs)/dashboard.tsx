@@ -1,9 +1,10 @@
 import { View, Text, StyleSheet, ScrollView } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 
+
 export default function Dashboard() {
-const { token } = useLocalSearchParams();
+const { token, amount, category } = useLocalSearchParams();
 
 const [eventCounts, setEventCounts] = useState<{ [key: string]: number }>({});
 const [loading, setLoading] = useState(true);
@@ -16,6 +17,41 @@ const firstDayOfMonth = new Date(year, month, 1).getDay();
 const daysInMonth = new Date(year, month + 1, 0).getDate();
 
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const [spending, setSpending] = useState({
+    Fun: 12,
+    Groceries: 30,
+    Uber: 18,
+    Dining: 27,
+});
+
+const totalSpent =
+    spending.Fun +
+    spending.Groceries +
+    spending.Uber +
+    spending.Dining;
+
+
+// Add new spend from check-in
+useEffect(() => {
+    if (amount && category) {
+        const numericAmount = Number(amount);
+
+        setSpending((prev) => ({
+        ...prev,
+        [category as string]:
+            (prev[category as keyof typeof prev] || 0) + numericAmount,
+        }));
+
+        // ALSO increase today’s event count
+        const todayStr = today.toISOString().split("T")[0];
+
+        setEventCounts((prev) => ({
+        ...prev,
+        [todayStr]: (prev[todayStr] || 0) + 1,
+        }));
+    }
+}, [amount, category]);
 
 // Fetch Google events
 useEffect(() => {
@@ -95,10 +131,19 @@ return (
     <View style={styles.container}>
 
     {/* TOP — Summary */}
-    <View style={styles.topSection}>
+        <View style={styles.topSection}>
         <Text style={styles.balanceLabel}>Total This Month</Text>
-        <Text style={styles.balanceAmount}>$87.40</Text>
-    </View>
+        <Text style={styles.balanceAmount}>${totalSpent}</Text>
+
+        <View style={styles.checkInButtonContainer}>
+            <Text
+            style={styles.checkInButton}
+            onPress={() => router.push("/checkin")}
+            >
+            Check In
+            </Text>
+        </View>
+        </View>
 
     {/* MIDDLE — Spending Categories */}
     <View style={styles.middleSection}>
@@ -106,27 +151,27 @@ return (
 
         <View style={styles.categoryRow}>
         <Text>☕ Fun</Text>
-        <Text>$12</Text>
+        <Text>${spending.Fun}</Text>
         </View>
 
         <View style={styles.categoryRow}>
-        <Text>🛒 Groceries</Text>
+        <Text>${spending.Groceries}</Text>
         <Text>$30</Text>
         </View>
 
         <View style={styles.categoryRow}>
-        <Text>🚗 Uber</Text>
+        <Text>${spending.Uber}</Text>
         <Text>$18</Text>
         </View>
 
         <View style={styles.categoryRow}>
         <Text>🍽 Dining</Text>
-        <Text>$27</Text>
+        <Text>${spending.Dining}</Text>
         </View>
 
         <View style={styles.predictionBox}>
         <Text style={styles.predictionText}>
-            Predicted Month End: $142.80
+            Predicted Month End: ${totalSpent}
         </Text>
         </View>
     </View>
@@ -187,6 +232,21 @@ const styles = StyleSheet.create({
         backgroundColor: "#C7F36B",
         justifyContent: "center",
         alignItems: "center",
+    },
+
+    checkInButtonContainer: {
+        position: "absolute",
+        bottom: -20,
+        right: 20,
+        },
+
+        checkInButton: {
+        backgroundColor: "black",
+        color: "white",
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 20,
+        fontWeight: "600",
     },
 
     balanceLabel: { fontSize: 18, color: "#333" },
