@@ -9,13 +9,14 @@ export default function CheckIn() {
     ];
 
     const spendOptions = [
-        { label: "$0-10", value: 10 },
-        { label: "$10-15", value: 15 },
-        { label: "$15-25+", value: 25 },
+        { label: "Cheapest ($0–10)", value: 10, color: "#D8B4F8" },     // lilac
+        { label: "Moderate ($10–15)", value: 15, color: "#C7F36B" },    // lime
+        { label: "Expensive ($15–25+)", value: 25, color: "#f96868" },  // pastel red
     ];
 
     const handleSpend = (location: any, amount: number) => {
-        router.push({
+        //changed from push to replae because we want to replace the current screen with the dashboard after check-in instead of stacking it on top
+        router.replace({
         pathname: "/",
         params: {
             location: location.name,
@@ -36,7 +37,7 @@ export default function CheckIn() {
             {spendOptions.map((option) => (
                 <TouchableOpacity
                 key={option.label}
-                style={styles.spendButton}
+                style={[styles.spendButton, { backgroundColor: option.color }]}
                 onPress={() => handleSpend(location, option.value)}
                 >
                 <Text style={styles.spendText}>{option.label}</Text>
@@ -73,7 +74,6 @@ export default function CheckIn() {
     },
 
     spendText: {
-        color: "white",
-        textAlign: "center",
+        textAlign: "center", fontWeight: "600",
     },
 });
