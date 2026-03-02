@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, Pressable } from "react-native";
 import { useEffect } from "react";
 import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
-import { makeRedirectUri } from "expo-auth-session";
+import * as AuthSession from "expo-auth-session";
 import { useRouter } from "expo-router";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -10,34 +10,43 @@ WebBrowser.maybeCompleteAuthSession();
 export default function SignUp() {
   const router = useRouter();
 
-  // ✅ Force HTTPS redirect via Expo proxy (valid for Google)
-  const redirectUri = makeRedirectUri({ useProxy: true });
+  // ✅ Force Expo proxy redirect (HTTPS) for Expo Go
+  // This should look like: https://auth.expo.io/@<username>/<slug>
+  const redirectUri = AuthSession.makeRedirectUri({
+    scheme: "spent",     // must match app.json "scheme"
+    path: "redirect",    // any path, just needs to be consistent
+  });
 
   const [request, response, promptAsync] = Google.useAuthRequest({
-    // ✅ MUST be the Web Client ID (ends with .apps.googleusercontent.com)
-    expoClientId:
+    // ✅ Web OAuth Client ID
+    clientId:
       "820527515652-glssibulbtjnq7vqur6hfg517k6lqbf1.apps.googleusercontent.com",
-    iosClientId:
-    "820527515652-glssibulbtjnq7vqqur6hfg517k6lqbf1.apps.googleusercontent.com",
 
     scopes: ["profile", "email"],
 
-    // ✅ Important for validity in Expo Go
+    // ✅ IMPORTANT: actually use the proxy redirect
     redirectUri,
   });
 
   useEffect(() => {
+    console.log("redirectUri (computed):", redirectUri);
+    console.log("redirectUri from request:", request?.redirectUri);
+  }, [request, redirectUri]);
+
+  useEffect(() => {
     if (response?.type === "success") {
       console.log("Google Sign-In success!", response.authentication);
-      router.push("/(tabs)");
+      router.replace("/(tabs)"); // Change this to your dashboard route
     } else if (response?.type === "error") {
       console.log("Google Sign-In error:", response.error);
+    } else {
+      console.log("Google Sign-In response:", response?.type);
     }
-  }, [response]);
+  }, [response, router]);
 
   const handleGoogleSignIn = async () => {
-    // ✅ Must use proxy in Expo Go
-    await promptAsync({ useProxy: true });
+    // ✅ No useProxy option needed here (we forced redirectUri above)
+    await promptAsync();
   };
 
   return (
@@ -48,17 +57,12 @@ export default function SignUp() {
 
       <View style={styles.formSection}>
         <Pressable
-          style={[styles.button, !request && styles.buttonDisabled]}
+          style={[styles.button, (!request || request?.url == null) && styles.buttonDisabled]}
           onPress={handleGoogleSignIn}
-          disabled={!request}
+          disabled={!request || request?.url == null}
         >
           <Text style={styles.buttonText}>Sign in with Google</Text>
         </Pressable>
-
-        {/* Helpful debug */}
-        <Text style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
-          Redirect URI: {redirectUri}
-        </Text>
       </View>
     </View>
   );
