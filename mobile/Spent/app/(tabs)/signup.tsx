@@ -17,7 +17,7 @@ export default function SignUp() {
   useEffect(() => {
     if (response?.type === "success") {
       // After Google sign-in, go to name input page
-      router.replace("/name");
+        console.log("Google Sign-In successful, navigating to name input...");
     }
   }, [response]);
 
