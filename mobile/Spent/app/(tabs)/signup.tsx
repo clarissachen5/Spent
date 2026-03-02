@@ -1,89 +1,85 @@
-import { Link } from "expo-router";
-import { View, Text, TextInput, StyleSheet, Pressable } from "react-native";
-import { useState } from "react";
+    import { View, Text, StyleSheet, Pressable } from "react-native";
+    import { useEffect } from "react";
+    import * as WebBrowser from "expo-web-browser";
+    import * as Google from "expo-auth-session/providers/google";
+    import { makeRedirectUri } from "expo-auth-session";
+    import { useRouter } from "expo-router";
 
-export default function SignUp() {
-const [name, setName] = useState("");
+    WebBrowser.maybeCompleteAuthSession();
 
-return (
-    <View style={styles.container}>
-    
-    {/* Lime Top Section */}
-    <View style={styles.topSection}>
-        <Text style={styles.title}>Welcome to Spent</Text>
-    </View>
+    export default function SignUp() {
+    const router = useRouter();
 
-    {/* White Form Section */}
-    <View style={styles.formSection}>
-        <Text style={styles.label}>Your Name</Text>
+    // ✅ Force HTTPS redirect via Expo proxy (valid for Google)
+    const redirectUri = makeRedirectUri({ useProxy: true } as any);
 
-        <TextInput
-        placeholder="Enter your name"
-        value={name}
-        onChangeText={setName}
-        style={styles.input}
-        placeholderTextColor="#888"
-        />
+    const [request, response, promptAsync] = Google.useAuthRequest({
+        // ✅ MUST be the Web Client ID (ends with .apps.googleusercontent.com)
+        clientId:
+        "820527515652-glssibulbtjnq7vqur6hfg517k6lqbf1.apps.googleusercontent.com",
+        iosClientId:
+        "820527515652-glssibulbtjnq7vqqur6hfg517k6lqbf1.apps.googleusercontent.com",
 
-        <Link href="/dashboard" asChild>
-        <Pressable style={styles.button}>
-            <Text style={styles.buttonText}>Continue</Text>
-        </Pressable>
-        </Link>
-    </View>
-    </View>
-);
-}
+        scopes: ["profile", "email"],
 
-const styles = StyleSheet.create({
-container: { flex: 1, backgroundColor: "white" },
+        // ✅ Important for validity in Expo Go
+        redirectUri,
+    });
 
-/* Lime Header */
-topSection: {
-    flex: 1,
-    backgroundColor: "#C7F36B",
-    justifyContent: "center",
-    alignItems: "center",
-},
+    useEffect(() => {
+        if (response?.type === "success") {
+        console.log("Google Sign-In success!", response.authentication);
+        router.push("/(tabs)");
+        } else if (response?.type === "error") {
+        console.log("Google Sign-In error:", response.error);
+        }
+    }, [response]);
 
-title: {
-    fontSize: 28,
-    fontWeight: "600",
-    color: "#333",
-},
+    const handleGoogleSignIn = async () => {
+        // ✅ Must use proxy in Expo Go
+        await (promptAsync as any)({ useProxy: true });
+    };
 
-/* Form Area */
-formSection: {
-    flex: 2,
-    padding: 30,
-    justifyContent: "center",
-},
+    return (
+        <View style={styles.container}>
+        <View style={styles.topSection}>
+            <Text style={styles.title}>Welcome to Spent</Text>
+        </View>
 
-label: {
-    fontSize: 16,
-    marginBottom: 8,
-    color: "#333",
-},
+        <View style={styles.formSection}>
+            <Pressable
+            style={[styles.button, !request && styles.buttonDisabled]}
+            onPress={handleGoogleSignIn}
+            disabled={!request}
+            >
+            <Text style={styles.buttonText}>Sign in with Google</Text>
+            </Pressable>
 
-input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 25,
-    fontSize: 16,
-},
+            {/* Helpful debug */}
+            <Text style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
+            Redirect URI: {redirectUri}
+            </Text>
+        </View>
+        </View>
+    );
+    }
 
-button: {
-    backgroundColor: "#C7F36B",
-    padding: 15,
-    borderRadius: 14,
-    alignItems: "center",
-},
-
-buttonText: {
-    fontWeight: "600",
-    fontSize: 16,
-    color: "#333",
-},
-});
+    const styles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: "white" },
+    topSection: {
+        flex: 1,
+        backgroundColor: "#C7F36B",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    title: { fontSize: 28, fontWeight: "600", color: "#333" },
+    formSection: { flex: 2, padding: 30, justifyContent: "center" },
+    button: {
+        backgroundColor: "#C7F36B",
+        padding: 15,
+        borderRadius: 14,
+        alignItems: "center",
+    },
+    buttonDisabled: { opacity: 0.6 },
+    buttonText: { fontWeight: "600", fontSize: 16, color: "#333" },
+    });
