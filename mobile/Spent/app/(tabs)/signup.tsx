@@ -27,12 +27,16 @@
     });
 
     useEffect(() => {
-        if (response?.type === "success") {
-        console.log("Google Sign-In success!", response.authentication);
-        router.push("/(tabs)");
-        } else if (response?.type === "error") {
-        console.log("Google Sign-In error:", response.error);
-        }
+        //pass token to dashboard on successful login to navigation page
+    if (response?.type === "success") {
+        const token = response.authentication?.accessToken;
+        console.log("Access Token:", token);
+
+        router.push({
+        pathname: "/(tabs)",
+        params: { token }, // pass token to dashboard
+        });
+    }
     }, [response]);
 
     const handleGoogleSignIn = async () => {
