@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, Pressable } from "react-native";
 import { useEffect } from "react";
 import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
-import * as AuthSession from "expo-auth-session";
+import { makeRedirectUri } from "expo-auth-session";
 import { useRouter } from "expo-router";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -10,43 +10,37 @@ WebBrowser.maybeCompleteAuthSession();
 export default function SignUp() {
   const router = useRouter();
 
-  // ✅ Force Expo proxy redirect (HTTPS) for Expo Go
-  // This should look like: https://auth.expo.io/@<username>/<slug>
-  const redirectUri = "https://auth.expo.io/@clchen5/Spent";
+  // ✅ Force Expo Auth proxy URL (HTTPS) for Expo Go
+  // IMPORTANT: this is the correct format: https://auth.expo.io/@username/slug
+  const redirectUri = "https://auth.expo.io/clchen5/spent-actual";
 
   const [request, response, promptAsync] = Google.useAuthRequest({
-    // ✅ Web OAuth Client ID
     webClientId:
       "820527515652-glssibulbtjnq7vqur6hfg517k6lqbf1.apps.googleusercontent.com",
-    iosClientId:
-    "820527515652-3ap73pd55flp82elvtsbpct1rjk23n3o.apps.googleusercontent.com",
-
-    //scopes: ["profile", "email"],
-
-    // ✅ IMPORTANT: actually use the proxy redirect
-    redirectUri,
+    // iosClientId:
+      // "820527515652-3ap73pd55flp82elvtsbpct1rjk23n3o.apps.googleusercontent.com",
+    redirectUri, // ✅ DO NOT comment out
+    scopes: ["profile", "email"],
   });
 
+  console.log("---- GOOGLE AUTH DEBUG ----");
+  console.log("request?.url:", request?.url);
+  console.log("request?.redirectUri:", request?.redirectUri);
+  console.log("request?.clientId:", request?.clientId);
+  console.log("---------------------------");
+
   useEffect(() => {
-    //console.log("redirectUri (computed):", redirectUri);
-    console.log("redirectUri from request:", request?.redirectUri);
+    console.log("request.redirectUri:", request?.redirectUri);
   }, [request]);
 
   useEffect(() => {
     if (response?.type === "success") {
-      console.log("Google Sign-In success!", response.authentication);
-      router.replace("/(tabs)"); // Change this to your dashboard route
+      router.replace("/(tabs)");
     } else if (response?.type === "error") {
       console.log("Google Sign-In error:", response.error);
-    } else {
-      console.log("Google Sign-In response:", response?.type);
     }
+    console.log("Google response:", response);
   }, [response, router]);
-
-  const handleGoogleSignIn = async () => {
-    // ✅ No useProxy option needed here (we forced redirectUri above)
-    await promptAsync();
-  };
 
   return (
     <View style={styles.container}>
@@ -56,9 +50,12 @@ export default function SignUp() {
 
       <View style={styles.formSection}>
         <Pressable
-          style={[styles.button, (!request || request?.url == null) && styles.buttonDisabled]}
-          onPress={handleGoogleSignIn}
-          disabled={!request || request?.url == null}
+          style={[
+            styles.button,
+            (!request || !request.url) && styles.buttonDisabled,
+          ]}
+          onPress={() => promptAsync()}
+          disabled={!request || !request.url}
         >
           <Text style={styles.buttonText}>Sign in with Google</Text>
         </Pressable>
