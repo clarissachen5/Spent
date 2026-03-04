@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Spent",
-    "slug": "Spent",
+    "slug": "spent-actual",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -9,7 +9,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.clchen5.spentactual",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -45,8 +49,12 @@
       "reactCompiler": true
     },
     "extra": {
-      "googleClientId": "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"
-    }
-
+      "googleClientId": "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",
+      "router": {},
+      "eas": {
+        "projectId": "0de29e12-a83a-41d0-aadb-3d41727af2ad"
+      }
+    },
+    "owner": "clchen5"
   }
 }

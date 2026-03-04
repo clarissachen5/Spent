@@ -12,26 +12,25 @@ export default function SignUp() {
 
   // ✅ Force Expo proxy redirect (HTTPS) for Expo Go
   // This should look like: https://auth.expo.io/@<username>/<slug>
-  const redirectUri = AuthSession.makeRedirectUri({
-    scheme: "spent",     // must match app.json "scheme"
-    path: "redirect",    // any path, just needs to be consistent
-  });
+  const redirectUri = "https://auth.expo.io/@clchen5/Spent";
 
   const [request, response, promptAsync] = Google.useAuthRequest({
     // ✅ Web OAuth Client ID
-    clientId:
+    webClientId:
       "820527515652-glssibulbtjnq7vqur6hfg517k6lqbf1.apps.googleusercontent.com",
+    iosClientId:
+    "820527515652-3ap73pd55flp82elvtsbpct1rjk23n3o.apps.googleusercontent.com",
 
-    scopes: ["profile", "email"],
+    //scopes: ["profile", "email"],
 
     // ✅ IMPORTANT: actually use the proxy redirect
     redirectUri,
   });
 
   useEffect(() => {
-    console.log("redirectUri (computed):", redirectUri);
+    //console.log("redirectUri (computed):", redirectUri);
     console.log("redirectUri from request:", request?.redirectUri);
-  }, [request, redirectUri]);
+  }, [request]);
 
   useEffect(() => {
     if (response?.type === "success") {
