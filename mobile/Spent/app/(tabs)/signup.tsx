@@ -1,47 +1,80 @@
 import { View, Text, StyleSheet, Pressable } from "react-native";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as WebBrowser from "expo-web-browser";
-import * as Google from "expo-auth-session/providers/google";
-import { makeRedirectUri } from "expo-auth-session";
+import * as AuthSession from "expo-auth-session";
 import { useRouter } from "expo-router";
 
 WebBrowser.maybeCompleteAuthSession();
 
+const discovery = {
+  authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+  tokenEndpoint: "https://oauth2.googleapis.com/token",
+  revocationEndpoint: "https://oauth2.googleapis.com/revoke",
+};
+
 export default function SignUp() {
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
 
-  // ✅ Force Expo Auth proxy URL (HTTPS) for Expo Go
-  // IMPORTANT: this is the correct format: https://auth.expo.io/@username/slug
-  const redirectUri = "https://auth.expo.io/clchen5/spent-actual";
+  // Expo Go proxy redirect (must match Google Cloud redirect URI)
+  const redirectUri = "https://auth.expo.io/@clchen5/spent-actual";
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    webClientId:
-      "820527515652-glssibulbtjnq7vqur6hfg517k6lqbf1.apps.googleusercontent.com",
-    // iosClientId:
-      // "820527515652-3ap73pd55flp82elvtsbpct1rjk23n3o.apps.googleusercontent.com",
-    redirectUri, // ✅ DO NOT comment out
-    scopes: ["profile", "email"],
-  });
+  const clientId =
+    "820527515652-glssibulbtjnq7vqur6hfg517k6lqbf1.apps.googleusercontent.com"; // WEB client
 
-  console.log("---- GOOGLE AUTH DEBUG ----");
-  console.log("request?.url:", request?.url);
-  console.log("request?.redirectUri:", request?.redirectUri);
-  console.log("request?.clientId:", request?.clientId);
-  console.log("---------------------------");
+  const [request, response, promptAsync] = AuthSession.useAuthRequest(
+    {
+      clientId,
+      redirectUri,
+      responseType: AuthSession.ResponseType.Code,
+      scopes: ["openid", "profile", "email"],
+      extraParams: {
+        access_type: "offline",
+      },
+    },
+    discovery
+  );
 
   useEffect(() => {
-    console.log("request.redirectUri:", request?.redirectUri);
+    console.log("redirectUri:", redirectUri);
+    console.log("auth url:", request?.url);
   }, [request]);
 
   useEffect(() => {
     if (response?.type === "success") {
+      // If you want tokens, exchange the code on your backend (recommended).
+      console.log("Auth success:", response.params);
       router.replace("/(tabs)");
     } else if (response?.type === "error") {
-      console.log("Google Sign-In error:", response.error);
+      console.log("Auth error:", response.error);
     }
-    console.log("Google response:", response);
   }, [response, router]);
 
+  // const handleGoogleSignIn = async () => {
+  //   if (!request || loading) return;
+  //   setLoading(true);
+  //   try {
+  //     await promptAsync();
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+  const [signingIn, setSigningIn] = useState(false);
+
+  const handleGoogleSignIn = async () => {
+    if (!request || signingIn) return;
+    setSigningIn(true);
+    try {
+      await promptAsync();
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
+  useEffect(() => {
+  console.log("AUTH RESPONSE:", response);
+}, [response]);
   return (
     <View style={styles.container}>
       <View style={styles.topSection}>
@@ -50,14 +83,13 @@ export default function SignUp() {
 
       <View style={styles.formSection}>
         <Pressable
-          style={[
-            styles.button,
-            (!request || !request.url) && styles.buttonDisabled,
-          ]}
-          onPress={() => promptAsync()}
-          disabled={!request || !request.url}
+          style={[styles.button, (!request || loading) && styles.buttonDisabled]}
+          onPress={handleGoogleSignIn}
+          disabled={!request || loading}
         >
-          <Text style={styles.buttonText}>Sign in with Google</Text>
+          <Text style={styles.buttonText}>
+            {loading ? "Signing in..." : "Sign in with Google"}
+          </Text>
         </Pressable>
       </View>
     </View>
