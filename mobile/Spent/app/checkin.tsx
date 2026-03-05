@@ -1,7 +1,9 @@
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { router } from "expo-router";
+import { useLocalSearchParams, router } from "expo-router";
+
 
 export default function CheckIn() {
+    const { token } = useLocalSearchParams();
     const locations = [
         { name: "Starbucks", category: "Dining" },
         { name: "Whole Foods", category: "Groceries" },
