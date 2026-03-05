@@ -155,8 +155,8 @@ return (
         </View>
 
         <View style={styles.categoryRow}>
-        <Text>${spending.Groceries}</Text>
-        <Text>$30</Text>
+          <Text>🛒 Groceries</Text>
+          <Text>${spending.Groceries}</Text>
         </View>
 
         <View style={styles.categoryRow}>
