@@ -1,15 +1,19 @@
 {
   "expo": {
     "name": "Spent",
-    "slug": "Spent",
+    "slug": "spent-actual",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "spent",
+    "scheme": "com.googleusercontent.apps.820527515652-3ap73pd55flp82elvtsbpct1rjk23n3o",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.clchen5.spent",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -43,6 +47,14 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "googleClientId": "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",
+      "router": {},
+      "eas": {
+        "projectId": "0de29e12-a83a-41d0-aadb-3d41727af2ad"
+      }
+    },
+    "owner": "clchen5"
   }
 }
