@@ -17,7 +17,7 @@ export default function CheckIn() {
     const handleSpend = (location: any, amount: number) => {
         //changed from push to replae because we want to replace the current screen with the dashboard after check-in instead of stacking it on top
         router.replace({
-        pathname: "/",
+        pathname: "/(tabs)",
         params: {
             location: location.name,
             category: location.category,
