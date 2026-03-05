@@ -16,7 +16,7 @@ export default function SignUp() {
     // include these later if you want Android/Web too:
     // androidClientId: "...",
     // webClientId: "...",
-    scopes: ["openid", "profile", "email"],
+    scopes: ["openid", "profile", "email", "https://www.googleapis.com/auth/calendar.readonly"],
   });
 
   useEffect(() => {
@@ -71,3 +71,4 @@ const styles = StyleSheet.create({
   buttonText: { fontWeight: "600", fontSize: 16, color: "#333" },
 
 });
+
