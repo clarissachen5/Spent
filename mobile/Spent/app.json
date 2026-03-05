@@ -5,13 +5,12 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "spent",
+    "scheme": "com.googleusercontent.apps.820527515652-3ap73pd55flp82elvtsbpct1rjk23n3o",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.clchen5.spentactual",
-      "simulator": true,
+      "bundleIdentifier": "com.clchen5.spent",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
