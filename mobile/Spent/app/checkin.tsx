@@ -19,10 +19,11 @@ export default function CheckIn() {
         router.replace({
         pathname: "/(tabs)",
         params: {
+            token,
             location: location.name,
             category: location.category,
             amount,
-        },
+            },
         });
     };
 
