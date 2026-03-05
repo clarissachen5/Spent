@@ -64,12 +64,11 @@ export default function Dashboard() {
 
     const fetchEvents = async () => {
       try {
-        const now = new Date();
-        const nextMonth = new Date();
-        nextMonth.setMonth(now.getMonth() + 1);
+        const monthStart = new Date(year, month, 1);
+        const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
 
         const response = await fetch(
-          `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${now.toISOString()}&timeMax=${nextMonth.toISOString()}&singleEvents=true&orderBy=startTime`,
+          `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${monthStart.toISOString()}&timeMax=${monthEnd.toISOString()}&singleEvents=true&orderBy=startTime`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -88,12 +87,18 @@ export default function Dashboard() {
         const counts: { [key: string]: number } = {};
 
         (data.items || []).forEach((event: any) => {
-          // Example: count events by date
-          const dateStr = event.start?.date || event.start?.dateTime?.split("T")[0];
+          let dateStr = "";
+          if (event.start?.date) {
+            dateStr = event.start.date; // All-day event, already YYYY-MM-DD
+          } else if (event.start?.dateTime) {
+            dateStr = event.start.dateTime.split("T")[0]; // Get YYYY-MM-DD part
+          }
           if (dateStr) {
             counts[dateStr] = (counts[dateStr] || 0) + 1;
           }
         });
+
+        console.log("Fetched eventCounts:", counts);
 
         setEventCounts(counts);
         setLoading(false);
@@ -138,29 +143,24 @@ export default function Dashboard() {
 
   return (
     <View style={styles.container}>
-      {/* TOP — Summary */}
       <View style={styles.topSection}>
         <Text style={styles.balanceLabel}>Total This Month</Text>
         <Text style={styles.balanceAmount}>${totalSpent}</Text>
         <View style={styles.checkInButtonContainer}></View>
-      </View>
-
         <View style={styles.checkInButtonContainer}>
-        <Text
-          style={styles.checkInButton}
-          onPress={() =>
-            router.push({
-              pathname: "/checkin",
-              params: { token },
-            })
-          }>
-          Check In
-        </Text>
+          <Text
+            style={styles.checkInButton}
+            onPress={() =>
+              router.push({
+                pathname: "/checkin",
+                params: { token },
+              })
+            }>
+            Check In
+          </Text>
         </View>
-        </View>
-
-    {/* MIDDLE — Spending Categories */}
-    <View style={styles.middleSection}>
+      </View>
+      <View style={styles.middleSection}>
         <Text style={styles.sectionTitle}>Spending Categories</Text>
         <View style={styles.categoryRow}>
           <Text>Fun: ${spending.Fun}</Text>
@@ -171,42 +171,35 @@ export default function Dashboard() {
           <Text>Dining: ${spending.Dining}</Text>
         </View>
       </View>
-
-      {/* BOTTOM — Google Calendar Heatmap */}
       <View style={styles.bottomSection}>
-        {loading ? (
-          <Text>Loading events...</Text>
-        ) : error ? (
-          <Text style={{ color: "red" }}>{error}</Text>
-        ) : (
-          <>
-            <View style={styles.weekHeader}>
-              {weekDays.map((day) => (
-                <Text key={day} style={styles.day}>{day}</Text>
-              ))}
-            </View>
-            {calendarRows.map((row, i) => (
-              <View key={i} style={styles.dateRow}>
-                {row.map((day, j) => {
-                  if (!day) return <View key={j} style={styles.dateBox} />;
-                  const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-                  const count = eventCounts[dateStr] || 0;
-                  return (
-                    <View
-                      key={j}
-                      style={[
-                        styles.dateBox,
-                        { backgroundColor: getColor(count) },
-                      ]}
-                    >
-                      <Text>{day}</Text>
-                    </View>
-                  );
-                })}
-              </View>
-            ))}
-          </>
-        )}
+        {loading && <Text>Loading events...</Text>}
+        {error && <Text style={{ color: "red" }}>{error}</Text>}
+        <View style={styles.weekHeader}>
+          {weekDays.map((day) => (
+            <Text key={day} style={styles.day}>{day}</Text>
+          ))}
+        </View>
+        {calendarRows.map((row, i) => (
+          <View key={i} style={styles.dateRow}>
+            {row.map((day, j) => {
+              if (!day) return <View key={j} style={styles.dateBox} />;
+              const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+              const count = eventCounts[dateStr] || 0;
+              console.log("Rendering date:", dateStr, "Count:", count, "EventCounts:", eventCounts);
+              return (
+                <View
+                  key={j}
+                  style={[
+                    styles.dateBox,
+                    { backgroundColor: getColor(count) },
+                  ]}
+                >
+                  <Text>{day}</Text>
+                </View>
+              );
+            })}
+          </View>
+        ))}
       </View>
     </View>
   );
