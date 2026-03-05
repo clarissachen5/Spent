@@ -77,4 +77,6 @@ const styles = StyleSheet.create({
   button: { backgroundColor: "#C7F36B", padding: 15, borderRadius: 14, alignItems: "center" },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { fontWeight: "600", fontSize: 16, color: "#333" },
+
 });
+

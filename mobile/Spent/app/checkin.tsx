@@ -1,7 +1,9 @@
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { router } from "expo-router";
+import { useLocalSearchParams, router } from "expo-router";
+
 
 export default function CheckIn() {
+    const { token } = useLocalSearchParams();
     const locations = [
         { name: "Starbucks", category: "Dining" },
         { name: "Whole Foods", category: "Groceries" },
@@ -17,12 +19,13 @@ export default function CheckIn() {
     const handleSpend = (location: any, amount: number) => {
         //changed from push to replae because we want to replace the current screen with the dashboard after check-in instead of stacking it on top
         router.replace({
-        pathname: "/",
+        pathname: "/(tabs)",
         params: {
+            token,
             location: location.name,
             category: location.category,
             amount,
-        },
+            },
         });
     };
 

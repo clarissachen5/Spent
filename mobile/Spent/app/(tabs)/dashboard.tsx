@@ -145,8 +145,22 @@ export default function Dashboard() {
         <View style={styles.checkInButtonContainer}></View>
       </View>
 
-      {/* MIDDLE — Spending Categories */}
-      <View style={styles.middleSection}>
+        <View style={styles.checkInButtonContainer}>
+        <Text
+          style={styles.checkInButton}
+          onPress={() =>
+            router.push({
+              pathname: "/checkin",
+              params: { token },
+            })
+          }>
+          Check In
+        </Text>
+        </View>
+        </View>
+
+    {/* MIDDLE — Spending Categories */}
+    <View style={styles.middleSection}>
         <Text style={styles.sectionTitle}>Spending Categories</Text>
         <View style={styles.categoryRow}>
           <Text>Fun: ${spending.Fun}</Text>
