@@ -22,10 +22,14 @@ export default function SignUp() {
   useEffect(() => {
     console.log("request.url:", request?.url);
     console.log("response:", response);
-    if (response?.type === "success") {
-      router.replace("/(tabs)");
-    }
-  }, [response]);
+      if (response?.type === "success") {
+      const token = response.authentication?.accessToken;
+        router.replace({
+        pathname: "/(tabs)",
+        params: { token }
+        });
+      }
+    }, [response]);
 
   const handleGoogleSignIn = async () => {
     if (!request || signingIn) return;
@@ -65,4 +69,5 @@ const styles = StyleSheet.create({
   button: { backgroundColor: "#C7F36B", padding: 15, borderRadius: 14, alignItems: "center" },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { fontWeight: "600", fontSize: 16, color: "#333" },
+
 });
