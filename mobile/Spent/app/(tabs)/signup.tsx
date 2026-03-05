@@ -16,14 +16,18 @@ export default function SignUp() {
     // include these later if you want Android/Web too:
     // androidClientId: "...",
     // webClientId: "...",
-    scopes: ["openid", "profile", "email"],
+    scopes: ["openid", "profile", "email", "https://www.googleapis.com/auth/calendar.readonly"],
   });
 
   useEffect(() => {
     console.log("request.url:", request?.url);
     console.log("response:", response);
     if (response?.type === "success") {
-      router.replace("/(tabs)");
+      const token = response.authentication?.accessToken;
+      router.replace({
+        pathname: "/(tabs)",
+        params: { token }
+      });
     }
   }, [response]);
 
@@ -66,3 +70,4 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.6 },
   buttonText: { fontWeight: "600", fontSize: 16, color: "#333" },
 });
+
