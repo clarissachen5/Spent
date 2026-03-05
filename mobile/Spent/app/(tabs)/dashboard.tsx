@@ -136,12 +136,16 @@ return (
         <Text style={styles.balanceAmount}>${totalSpent}</Text>
 
         <View style={styles.checkInButtonContainer}>
-            <Text
-            style={styles.checkInButton}
-            onPress={() => router.push("/checkin")}
-            >
-            Check In
-            </Text>
+        <Text
+          style={styles.checkInButton}
+          onPress={() =>
+            router.push({
+              pathname: "/checkin",
+              params: { token },
+            })
+          }>
+          Check In
+        </Text>
         </View>
         </View>
 
