@@ -10,14 +10,16 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth(); // 0 indexed
+  const year = 2026;
+  const month = 2; // March (0-indexed)
+  const today = new Date(year, month, 1);
 
   const firstDayOfMonth = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
   const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  
 
   const [spending, setSpending] = useState({
       Fun: 12,
@@ -89,9 +91,35 @@ export default function Dashboard() {
         (data.items || []).forEach((event: any) => {
           let dateStr = "";
           if (event.start?.date) {
-            dateStr = event.start.date; // All-day event, already YYYY-MM-DD
+            // Check if it's already in YYYY-MM-DD format
+            if (/^\d{4}-\d{2}-\d{2}$/.test(event.start.date)) {
+              dateStr = event.start.date;
+            } else {
+              // Parse "Monday, March 23, 2026"
+              const match = event.start.date.match(/^[A-Za-z]+,\s([A-Za-z]+)\s(\d{1,2}),\s(\d{4})$/);
+              if (match) {
+                const monthNames = {
+                  January: "01",
+                  February: "02",
+                  March: "03",
+                  April: "04",
+                  May: "05",
+                  June: "06",
+                  July: "07",
+                  August: "08",
+                  September: "09",
+                  October: "10",
+                  November: "11",
+                  December: "12",
+                };
+                const month = monthNames[match[1]];
+                const day = match[2].padStart(2, "0");
+                const year = match[3];
+                dateStr = `${year}-${month}-${day}`;
+              }
+            }
           } else if (event.start?.dateTime) {
-            dateStr = event.start.dateTime.split("T")[0]; // Get YYYY-MM-DD part
+            dateStr = event.start.dateTime.split("T")[0];
           }
           if (dateStr) {
             counts[dateStr] = (counts[dateStr] || 0) + 1;
