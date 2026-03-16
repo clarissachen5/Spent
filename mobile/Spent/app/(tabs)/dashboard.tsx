@@ -77,23 +77,29 @@ export default function Dashboard() {
             },
           }
         );
-        const text = await response.text();
-        console.log("Fetch status:", response.status, "Body:", text);
+        // const text = await response.text();
+        // console.log("Fetch status:", response.status, "Body:", text);
 
+        
+        console.log("Successfully fetched events. Parsing response...");
+        const data = await response.json();
         if (!response.ok) {
           throw new Error("Failed to fetch events. Invalid or expired token.");
         }
-
-        const data = await response.json();
-
+        console.log("Raw API response:", data);
         const counts: { [key: string]: number } = {};
 
-        (data.items || []).forEach((event: any) => {
+        (data.items || []).forEach((event: any, idx: number) => {
           let dateStr = "";
+          console.log(`[${idx}] Raw event:`, event);
+
           if (event.start?.date) {
+            console.log(`[${idx}] Found event.start.date:`, event.start.date);
+
             // Check if it's already in YYYY-MM-DD format
             if (/^\d{4}-\d{2}-\d{2}$/.test(event.start.date)) {
               dateStr = event.start.date;
+              console.log(`[${idx}] Date is ISO format:`, dateStr);
             } else {
               // Parse "Monday, March 23, 2026"
               const match = event.start.date.match(/^[A-Za-z]+,\s([A-Za-z]+)\s(\d{1,2}),\s(\d{4})$/);
@@ -112,15 +118,22 @@ export default function Dashboard() {
                   November: "11",
                   December: "12",
                 };
-                const month = monthNames[match[1]];
+                const month = monthNames[match[1] as keyof typeof monthNames];
                 const day = match[2].padStart(2, "0");
                 const year = match[3];
                 dateStr = `${year}-${month}-${day}`;
+                console.log(`[${idx}] Parsed human-readable date:`, dateStr);
+              } else {
+                console.log(`[${idx}] Could not parse human-readable date:`, event.start.date);
               }
             }
           } else if (event.start?.dateTime) {
             dateStr = event.start.dateTime.split("T")[0];
+            console.log(`[${idx}] Found event.start.dateTime:`, event.start.dateTime, "->", dateStr);
+          } else {
+            console.log(`[${idx}] No recognizable date in event.start`);
           }
+
           if (dateStr) {
             counts[dateStr] = (counts[dateStr] || 0) + 1;
           }
@@ -135,7 +148,7 @@ export default function Dashboard() {
         setLoading(false);
       }
     };
-
+    console.log("Starting to fetch events with token:", token);
     fetchEvents();
   }, [token]);
 
