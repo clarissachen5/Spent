@@ -77,9 +77,6 @@ export default function Dashboard() {
             },
           }
         );
-        // const text = await response.text();
-        // console.log("Fetch status:", response.status, "Body:", text);
-
         
         console.log("Successfully fetched events. Parsing response...");
         const data = await response.json();
