@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
+import Slider from "@react-native-community/slider";
 
 
 export default function Dashboard() {
@@ -200,14 +201,40 @@ export default function Dashboard() {
       </View>
       <View style={styles.middleSection}>
         <Text style={styles.sectionTitle}>Spending Categories</Text>
-        <View style={styles.categoryRow}>
-          <Text>Fun: ${spending.Fun}</Text>
-          <Text>Groceries: ${spending.Groceries}</Text>
-        </View>
-        <View style={styles.categoryRow}>
-          <Text>Uber: ${spending.Uber}</Text>
-          <Text>Dining: ${spending.Dining}</Text>
-        </View>
+        {Object.entries(spending).map(([category, value]) => {
+          const colors: any = {
+            Fun: "#FDE68A",
+            Groceries: "#BBF7D0",
+            Uber: "#BFDBFE",
+            Dining: "#FBCFE8",
+          };
+          return (
+            <View
+              key={category}
+              style={[
+                styles.categoryCard,
+                { backgroundColor: colors[category] || "#eee" },
+              ]}
+            >
+              <View style={styles.categoryHeader}>
+                <Text style={styles.categoryName}>{category}</Text>
+                <Text style={styles.categoryAmount}>${value}</Text>
+              </View>
+
+              <Slider
+                minimumValue={0}
+                maximumValue={100}
+                value={value}
+                onValueChange={(val) =>
+                  setSpending((prev) => ({
+                    ...prev,
+                    [category]: Math.round(val),
+                  }))
+                }
+              />
+            </View>
+          );
+        })}
       </View>
       <View style={styles.bottomSection}>
         {loading && <Text>Loading events...</Text>}
@@ -256,15 +283,15 @@ const styles = StyleSheet.create({
 
     checkInButtonContainer: {
         position: "absolute",
-        bottom: -20,
+        bottom: 20,
         right: 20,
         },
 
         checkInButton: {
-        backgroundColor: "black",
-        color: "white",
-        paddingHorizontal: 14,
-        paddingVertical: 8,
+        backgroundColor: "#f9ebcc",
+        color: "#C7F36B",
+        paddingHorizontal: 16,
+        paddingVertical: 10,
         borderRadius: 20,
         fontWeight: "600",
     },
@@ -300,6 +327,28 @@ const styles = StyleSheet.create({
 
     predictionText: {
         fontWeight: "600",
+    },
+
+    categoryCard: {
+      padding: 16,
+      borderRadius: 16,
+      marginBottom: 14,
+    },
+
+    categoryHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginBottom: 8,
+    },
+
+    categoryName: {
+      fontSize: 16,
+      fontWeight: "600",
+    },
+
+    categoryAmount: {
+      fontSize: 16,
+      fontWeight: "700",
     },
 
     /* BOTTOM — Calendar */
