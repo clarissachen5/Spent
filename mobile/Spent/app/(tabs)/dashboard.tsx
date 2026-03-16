@@ -19,7 +19,6 @@ export default function Dashboard() {
 
   const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-  
 
   const [spending, setSpending] = useState({
       Fun: 12,
@@ -56,6 +55,48 @@ export default function Dashboard() {
       }
   }, [amount, category]);
 
+  const parseEvents = (items: any[]) => {
+          const grouped: { [date: string]: Array<any> } = {};
+          items.forEach((event: any) => {
+            let dateStr = "";
+            if (event.start?.date) {
+              dateStr = event.start.date;
+            } else if (event.start?.dateTime) {
+              dateStr = event.start.dateTime.split("T")[0];
+            }
+            if (dateStr) {
+              if (!grouped[dateStr]) grouped[dateStr] = [];
+              grouped[dateStr].push({
+                title: event.summary || "",
+                description: event.description || "",
+                location: event.location || "",
+                start: event.start,
+                end: event.end,
+              });
+            }
+          });
+          return grouped;
+        };
+
+      // Send events to backend for analysis
+  const sendEventsToBackend = async (groupedEvents: any) => {
+    try {
+      const response = await fetch("http://localhost:8000/ollama/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ events: groupedEvents }),
+      });
+      const result = await response.json();
+      console.log("AI API result:", result);
+      // Handle result as needed
+    } catch (err) {
+      console.error("Error sending events to backend:", err);
+    }
+  };
+
+
   // Fetch Google events
   useEffect(() => {
     if (!token) {
@@ -63,6 +104,7 @@ export default function Dashboard() {
       setLoading(false);
       return;
     }
+
 
     const fetchEvents = async () => {
       try {
@@ -85,6 +127,7 @@ export default function Dashboard() {
         }
         console.log("Raw API response:", data);
         const counts: { [key: string]: number } = {};
+        const groupedEvents = parseEvents(data.items || []);
 
         (data.items || []).forEach((event: any, idx: number) => {
           let dateStr = "";
@@ -140,6 +183,7 @@ export default function Dashboard() {
 
         setEventCounts(counts);
         setLoading(false);
+        sendEventsToBackend(groupedEvents);
       } catch (err: any) {
         setError(err.message || "Error fetching events.");
         setLoading(false);
