@@ -37,7 +37,7 @@ export default function CheckIn() {
     const amount = sliderValues[location.name] ?? 0;
 
     router.replace({
-      pathname: "/(tabs)",
+      pathname: "/(tabs)/dashboard",
       params: {
         token,
         location: location.name,
