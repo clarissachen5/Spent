@@ -12,8 +12,7 @@ import { useState } from "react";
 import Slider from "@react-native-community/slider";
 
 if (Platform.OS === "android") {
-  UIManager.setLayoutAnimationEnabledExperimental &&
-    UIManager.setLayoutAnimationEnabledExperimental(true);
+  UIManager.setLayoutAnimationEnabledExperimental?.(true);
 }
 
 export default function CheckIn() {
@@ -24,22 +23,26 @@ export default function CheckIn() {
     { name: "Starbucks", category: "Dining" },
     { name: "Whole Foods", category: "Groceries" },
     { name: "Uber", category: "Uber" },
+    { name: "Movies", category: "Fun" },
   ];
 
   const [sliderValues, setSliderValues] = useState<Record<string, number>>({
-    Starbucks: 10,
-    "Whole Foods": 15,
-    Uber: 10,
+    Starbucks: 15,
+    "Whole Foods": 30,
+    Uber: 20,
+    Movies: 18,
   });
 
-  const handleSpend = (location: any) => {
+  const handleSpend = (location: { name: string; category: string }) => {
+    const amount = sliderValues[location.name] ?? 0;
+
     router.replace({
       pathname: "/(tabs)",
       params: {
         token,
         location: location.name,
         category: location.category,
-        amount: sliderValues[location.name],
+        amount: String(amount),
       },
     });
   };
@@ -50,7 +53,7 @@ export default function CheckIn() {
 
       {locations.map((location) => {
         const isActive = activeLocation === location.name;
-        const currentValue = sliderValues[location.name] || 10;
+        const currentValue = sliderValues[location.name] ?? 0;
 
         return (
           <View key={location.name} style={styles.cardContainer}>
@@ -64,39 +67,43 @@ export default function CheckIn() {
               }}
             >
               <Text style={styles.cardTitle}>{location.name}</Text>
+              <Text style={styles.cardCategory}>{location.category}</Text>
             </TouchableOpacity>
 
             {isActive && (
               <View style={styles.sliderContainer}>
-                <Text style={styles.sliderLabel}>Spend: ${currentValue}</Text>
+                <View style={styles.sliderHeader}>
+                  <Text style={styles.sliderLabel}>Spend amount</Text>
+                  <Text style={styles.sliderValue}>${currentValue}</Text>
+                </View>
 
                 <Slider
                   style={styles.slider}
                   minimumValue={0}
-                  maximumValue={50}
+                  maximumValue={100}
                   step={1}
                   value={currentValue}
                   minimumTrackTintColor="#C7F36B"
-                  maximumTrackTintColor="#ddd"
+                  maximumTrackTintColor="#D9D9D9"
                   thumbTintColor="#111"
                   onValueChange={(value) =>
                     setSliderValues((prev) => ({
                       ...prev,
-                      [location.name]: value,
+                      [location.name]: Math.round(value),
                     }))
                   }
                 />
 
                 <View style={styles.rangeLabels}>
                   <Text style={styles.rangeText}>$0</Text>
-                  <Text style={styles.rangeText}>$50</Text>
+                  <Text style={styles.rangeText}>$100</Text>
                 </View>
 
                 <TouchableOpacity
                   style={styles.confirmButton}
                   onPress={() => handleSpend(location)}
                 >
-                  <Text style={styles.confirmText}>Confirm</Text>
+                  <Text style={styles.confirmText}>Add to Dashboard</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -130,15 +137,10 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     padding: 22,
     borderRadius: 20,
-
-    flexDirection: "row",
-    alignItems: "center",
-
     shadowColor: "#000",
     shadowOpacity: 0.08,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
-
     elevation: 6,
   },
 
@@ -150,6 +152,13 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 18,
     fontWeight: "600",
+    color: "#111",
+  },
+
+  cardCategory: {
+    marginTop: 4,
+    fontSize: 14,
+    color: "#666",
   },
 
   sliderContainer: {
@@ -159,26 +168,37 @@ const styles = StyleSheet.create({
     padding: 16,
   },
 
+  sliderHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
   sliderLabel: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
-    marginBottom: 8,
+    color: "#111",
+  },
+
+  sliderValue: {
+    fontSize: 18,
+    fontWeight: "700",
     color: "#111",
   },
 
   slider: {
     width: "100%",
     height: 40,
+    marginTop: 8,
   },
 
   rangeLabels: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 4,
   },
 
   rangeText: {
-    fontSize: 13,
+    fontSize: 12,
     color: "#666",
   },
 
