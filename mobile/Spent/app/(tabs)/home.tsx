@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
@@ -69,6 +70,7 @@ function getHeatmapColor(count: number): string {
 }
 
 export default function HomeScreen() {
+  const { top } = useSafeAreaInsets();
   const { token: paramToken } = useLocalSearchParams();
   const { token: contextToken } = useAuth();
   const token = contextToken ?? paramToken;
@@ -76,66 +78,82 @@ export default function HomeScreen() {
   const streak = 3;
   const [weekOffset, setWeekOffset] = useState(0);
   const [eventCounts, setEventCounts] = useState<{ [key: string]: number }>({});
+  // Track which "YYYY-M" months have already been fetched so we don't re-request
+  const [fetchedMonths, setFetchedMonths] = useState<Set<string>>(new Set());
 
   const weekDates = getWeekDates(weekOffset);
 
-  // Mirror the exact event-fetching + date-parsing logic from dashboard.tsx
   useEffect(() => {
     if (!token) return;
 
-    const fetchEvents = async () => {
-      try {
-        const today = new Date();
-        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-        const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
+    // A week can straddle two months — collect every unique year-month pair
+    const needed = Array.from(
+      new Set(weekDates.map(d => `${d.getFullYear()}-${d.getMonth()}`))
+    ).filter(key => !fetchedMonths.has(key));
 
-        const response = await fetch(
-          `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${monthStart.toISOString()}&timeMax=${monthEnd.toISOString()}&singleEvents=true&orderBy=startTime`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+    if (needed.length === 0) return;
 
-        const data = await response.json();
-        if (!response.ok) throw new Error('Failed to fetch events');
-
-        const counts: { [key: string]: number } = {};
-
-        (data.items || []).forEach((event: any) => {
-          let dateStr = '';
-
-          if (event.start?.date) {
-            if (/^\d{4}-\d{2}-\d{2}$/.test(event.start.date)) {
-              dateStr = event.start.date;
-            } else {
-              const match = event.start.date.match(/^[A-Za-z]+,\s([A-Za-z]+)\s(\d{1,2}),\s(\d{4})$/);
-              if (match) {
-                const monthNames: Record<string, string> = {
-                  January: '01', February: '02', March: '03', April: '04',
-                  May: '05', June: '06', July: '07', August: '08',
-                  September: '09', October: '10', November: '11', December: '12',
-                };
-                dateStr = `${match[3]}-${monthNames[match[1]]}-${match[2].padStart(2, '0')}`;
-              }
+    const parseEvents = (items: any[]): { [key: string]: number } => {
+      const counts: { [key: string]: number } = {};
+      const monthNames: Record<string, string> = {
+        January: '01', February: '02', March: '03', April: '04',
+        May: '05', June: '06', July: '07', August: '08',
+        September: '09', October: '10', November: '11', December: '12',
+      };
+      items.forEach((event: any) => {
+        let dateStr = '';
+        if (event.start?.date) {
+          if (/^\d{4}-\d{2}-\d{2}$/.test(event.start.date)) {
+            dateStr = event.start.date;
+          } else {
+            const match = event.start.date.match(/^[A-Za-z]+,\s([A-Za-z]+)\s(\d{1,2}),\s(\d{4})$/);
+            if (match) {
+              dateStr = `${match[3]}-${monthNames[match[1]]}-${match[2].padStart(2, '0')}`;
             }
-          } else if (event.start?.dateTime) {
-            dateStr = event.start.dateTime.split('T')[0];
           }
+        } else if (event.start?.dateTime) {
+          dateStr = event.start.dateTime.split('T')[0];
+        }
+        if (dateStr) counts[dateStr] = (counts[dateStr] || 0) + 1;
+      });
+      return counts;
+    };
 
-          if (dateStr) counts[dateStr] = (counts[dateStr] || 0) + 1;
-        });
+    const fetchMonth = async (year: number, month: number) => {
+      const monthStart = new Date(year, month, 1);
+      const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
+      const response = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${monthStart.toISOString()}&timeMax=${monthEnd.toISOString()}&singleEvents=true&orderBy=startTime`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error('Failed to fetch events');
+      return parseEvents(data.items || []);
+    };
 
-        setEventCounts(counts);
+    const fetchNeeded = async () => {
+      try {
+        const results = await Promise.all(
+          needed.map(key => {
+            const [year, month] = key.split('-').map(Number);
+            return fetchMonth(year, month);
+          })
+        );
+        const merged = Object.assign({}, ...results);
+        setEventCounts(prev => ({ ...prev, ...merged }));
+        setFetchedMonths(prev => new Set([...prev, ...needed]));
       } catch (_) {
-        // silently fail on home screen
+        // silently fail
       }
     };
 
-    fetchEvents();
-  }, [token]);
+    fetchNeeded();
+  }, [token, weekOffset]);
 
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: top + 20 }]}
       showsVerticalScrollIndicator={false}
     >
       {/* ── Week navigation ── */}
