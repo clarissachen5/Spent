@@ -6,6 +6,7 @@ import {
   Modal,
   TouchableOpacity,
   Dimensions,
+  Image as RNImage,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -46,15 +47,17 @@ const MAPS_KEY = GOOGLE_MAPS_KEY;
 
 function staticMapUrl(address: string): string {
   const addr = encodeURIComponent(address);
-  return (
+  const marker = encodeURIComponent(`color:green|${address}`);
+  const url =
     `https://maps.googleapis.com/maps/api/staticmap` +
     `?center=${addr}` +
     `&zoom=16` +
     `&size=600x400` +
     `&scale=2` +
-    `&markers=color:green%7C${addr}` +
-    `&key=${MAPS_KEY}`
-  );
+    `&markers=${marker}` +
+    `&key=${MAPS_KEY}`;
+  console.log('[Map URL]', url);
+  return url;
 }
 
 interface Location {
@@ -176,10 +179,11 @@ function SwipeCard({ location, onSwipe, isTop, stackIndex }: SwipeCardProps) {
       >
         {/* ── Map ── */}
         <View style={styles.mapContainer}>
-          <Image
+          <RNImage
             source={{ uri: staticMapUrl(location.address) }}
             style={styles.mapImage}
-            contentFit="cover"
+            resizeMode="cover"
+            onError={(e) => console.log('[Map Error]', e.nativeEvent.error)}
           />
           {/* Category pill over map */}
           <View style={[styles.categoryPill, { backgroundColor: location.accentColor }]}>
@@ -410,8 +414,8 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   mapImage: {
-    width: '100%',
-    height: '100%',
+    width: CARD_WIDTH,
+    height: MAP_HEIGHT,
   },
   categoryPill: {
     position: 'absolute',
