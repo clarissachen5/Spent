@@ -11,6 +11,7 @@ import { Image } from 'expo-image';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
+import CheckInModal from '../../components/CheckInModal';
 
 // ── Figma assets (local SVGs with CSS vars resolved) ─────────────────────────
 const chevronLeft        = require('../../assets/icons/chevronLeft.svg');
@@ -77,6 +78,7 @@ export default function HomeScreen() {
   const totalSaved = 362;
   const streak = 3;
   const [dayOffset, setDayOffset] = useState(0);
+  const [checkInVisible, setCheckInVisible] = useState(false);
   const panStartOffset = useRef(0);
   const [eventCounts, setEventCounts] = useState<{ [key: string]: number }>({});
   // Track which "YYYY-M" months have already been fetched so we don't re-request
@@ -215,9 +217,7 @@ export default function HomeScreen() {
           <View style={styles.checkInWrapper}>
             <TouchableOpacity
               style={styles.checkInButton}
-              onPress={() =>
-                router.push({ pathname: '/checkin', params: { token } })
-              }
+              onPress={() => setCheckInVisible(true)}
             >
               <Image source={clipboardIcon} style={styles.clipboardImg} contentFit="contain" />
               <Text style={styles.checkInLabel}>check in</Text>
@@ -288,6 +288,10 @@ export default function HomeScreen() {
         <Image source={calendarIcon} style={styles.calendarIconImg} contentFit="contain" />
         <Text style={styles.sectionTitle}>Upcoming Expenses</Text>
       </View>
+      <CheckInModal
+        visible={checkInVisible}
+        onClose={() => setCheckInVisible(false)}
+      />
     </ScrollView>
   );
 }
