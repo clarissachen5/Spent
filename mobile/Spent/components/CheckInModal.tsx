@@ -56,7 +56,6 @@ function staticMapUrl(address: string): string {
     `&scale=2` +
     `&markers=${marker}` +
     `&key=${MAPS_KEY}`;
-  console.log('[Map URL]', url);
   return url;
 }
 
@@ -179,12 +178,13 @@ function SwipeCard({ location, onSwipe, isTop, stackIndex }: SwipeCardProps) {
       >
         {/* ── Map ── */}
         <View style={styles.mapContainer}>
-          <RNImage
-            source={{ uri: staticMapUrl(location.address) }}
-            style={styles.mapImage}
-            resizeMode="cover"
-            onError={(e) => console.log('[Map Error]', e.nativeEvent.error)}
-          />
+          {stackIndex <= 1 && (
+            <RNImage
+              source={{ uri: staticMapUrl(location.address) }}
+              style={styles.mapImage}
+              resizeMode="cover"
+            />
+          )}
           {/* Category pill over map */}
           <View style={[styles.categoryPill, { backgroundColor: location.accentColor }]}>
             <Image source={location.icon} style={styles.categoryIcon} contentFit="contain" />
