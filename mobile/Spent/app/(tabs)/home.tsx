@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
+import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 
@@ -31,7 +32,8 @@ const otherIcon          = require('../../assets/icons/otherIcon.svg');
 const calendarIcon       = require('../../assets/icons/calendarIcon.svg');
 // ─────────────────────────────────────────────────────────────────────────────
 
-const WEEK_DAYS = ['Mon', 'Tues', 'Wed', 'Thurs', 'Fri', 'Sat', 'Sun'];
+// Indexed by Date.getDay() (0 = Sun)
+const DAY_NAMES = ['Sun', 'Mon', 'Tues', 'Wed', 'Thurs', 'Fri', 'Sat'];
 
 const CATEGORIES = [
   { name: 'Food',           icon: foodIcon,           amount: 11, fill: 0.62 },
@@ -42,14 +44,12 @@ const CATEGORIES = [
   { name: 'Other',          icon: otherIcon,          amount: 11, fill: 0.62 },
 ];
 
-function getWeekDates(offsetWeeks: number = 0): Date[] {
-  const curr = new Date();
-  const dayOfWeek = curr.getDay(); // 0 = Sun
-  const monday = new Date(curr);
-  monday.setDate(curr.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + offsetWeeks * 7);
+// Returns 7 consecutive dates starting at today + dayOffset
+function getVisibleDates(dayOffset: number = 0): Date[] {
+  const today = new Date();
   return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
+    const d = new Date(today);
+    d.setDate(today.getDate() + dayOffset + i);
     return d;
   });
 }
@@ -76,19 +76,20 @@ export default function HomeScreen() {
   const token = contextToken ?? paramToken;
   const totalSaved = 362;
   const streak = 3;
-  const [weekOffset, setWeekOffset] = useState(0);
+  const [dayOffset, setDayOffset] = useState(0);
+  const panStartOffset = useRef(0);
   const [eventCounts, setEventCounts] = useState<{ [key: string]: number }>({});
   // Track which "YYYY-M" months have already been fetched so we don't re-request
   const [fetchedMonths, setFetchedMonths] = useState<Set<string>>(new Set());
 
-  const weekDates = getWeekDates(weekOffset);
+  const visibleDates = getVisibleDates(dayOffset);
 
   useEffect(() => {
     if (!token) return;
 
-    // A week can straddle two months — collect every unique year-month pair
+    // Visible days can straddle months — collect every unique year-month pair
     const needed = Array.from(
-      new Set(weekDates.map(d => `${d.getFullYear()}-${d.getMonth()}`))
+      new Set(visibleDates.map(d => `${d.getFullYear()}-${d.getMonth()}`))
     ).filter(key => !fetchedMonths.has(key));
 
     if (needed.length === 0) return;
@@ -148,7 +149,7 @@ export default function HomeScreen() {
     };
 
     fetchNeeded();
-  }, [token, weekOffset]);
+  }, [token, dayOffset]);
 
   return (
     <ScrollView
@@ -160,30 +161,41 @@ export default function HomeScreen() {
       <View style={styles.weekSection}>
         {/* Today pill */}
         <View style={styles.todayPill}>
-          <TouchableOpacity onPress={() => setWeekOffset(weekOffset - 1)}>
-            <Image source={chevronLeft} style={styles.chevronImg} contentFit="contain" />
+          <TouchableOpacity onPress={() => setDayOffset(prev => prev - 7)}>
+            <Image source={chevronLeft} style={[styles.chevronImg, { transform: [{ rotate: '180deg' }] }]} contentFit="contain" />
           </TouchableOpacity>
-          <Text style={styles.todayLabel}>Today</Text>
-          <TouchableOpacity onPress={() => setWeekOffset(weekOffset + 1)}>
+          <TouchableOpacity onPress={() => setDayOffset(0)}>
+            <Text style={styles.todayLabel}>Today</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setDayOffset(prev => prev + 7)}>
             <Image source={chevronRight} style={styles.chevronImg} contentFit="contain" />
           </TouchableOpacity>
         </View>
 
-        {/* Day cards */}
-        <View style={styles.weekRow}>
-          {WEEK_DAYS.map((day, i) => {
-            const date = weekDates[i];
-            const count = eventCounts[toDateStr(date)] || 0;
-            return (
-              <View key={day} style={styles.dayCard}>
-                <Text style={styles.dayLabel}>{day}</Text>
-                <View style={[styles.dayCircle, { backgroundColor: getHeatmapColor(count) }]}>
-                  <Text style={styles.dayNumber}>{date.getDate()}</Text>
+        {/* Day cards — swipeable day by day */}
+        <GestureDetector gesture={Gesture.Pan()
+          .runOnJS(true)
+          .onBegin(() => { panStartOffset.current = dayOffset; })
+          .onUpdate(e => {
+            // ~48px per day so dragging feels 1:1 with the cards
+            const delta = Math.round(-e.translationX / 48);
+            setDayOffset(panStartOffset.current + delta);
+          })
+        }>
+          <View style={styles.weekRow}>
+            {visibleDates.map((date, i) => {
+              const count = eventCounts[toDateStr(date)] || 0;
+              return (
+                <View key={i} style={styles.dayCard}>
+                  <Text style={styles.dayLabel}>{DAY_NAMES[date.getDay()]}</Text>
+                  <View style={[styles.dayCircle, { backgroundColor: getHeatmapColor(count) }]}>
+                    <Text style={styles.dayNumber}>{date.getDate()}</Text>
+                  </View>
                 </View>
-              </View>
-            );
-          })}
-        </View>
+              );
+            })}
+          </View>
+        </GestureDetector>
       </View>
 
       {/* ── Hero card ── */}

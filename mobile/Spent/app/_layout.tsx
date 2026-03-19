@@ -2,6 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import * as firebase from '../src/config/firebase';
@@ -17,6 +18,7 @@ export default function RootLayout() {
 
   //  write some console log to test firebase is working 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <AuthProvider>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <Stack>
@@ -29,5 +31,6 @@ export default function RootLayout() {
         <StatusBar style="auto" />
       </ThemeProvider>
     </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
