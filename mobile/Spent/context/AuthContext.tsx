@@ -4,6 +4,7 @@ export interface CheckInResult {
   location: string;
   category: string;
   visited: boolean;
+  amount: number;
   timestamp: Date;
 }
 

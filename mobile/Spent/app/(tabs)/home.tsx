@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -36,13 +36,13 @@ const calendarIcon       = require('../../assets/icons/calendarIcon.svg');
 // Indexed by Date.getDay() (0 = Sun)
 const DAY_NAMES = ['Sun', 'Mon', 'Tues', 'Wed', 'Thurs', 'Fri', 'Sat'];
 
-const CATEGORIES = [
-  { name: 'Food',           icon: foodIcon,           amount: 11, fill: 0.62 },
-  { name: 'Shopping',       icon: shoppingIcon,       amount: 11, fill: 0.62 },
-  { name: 'Coffee',         icon: coffeeIcon,         amount: 11, fill: 0.62 },
-  { name: 'Entertainment',  icon: entertainmentIcon,  amount: 11, fill: 0.62 },
-  { name: 'Transportation', icon: transportationIcon, amount: 11, fill: 0.62 },
-  { name: 'Other',          icon: otherIcon,          amount: 11, fill: 0.62 },
+const CATEGORY_META = [
+  { name: 'Food',           icon: foodIcon,           budget: 200 },
+  { name: 'Shopping',       icon: shoppingIcon,       budget: 150 },
+  { name: 'Coffee',         icon: coffeeIcon,         budget: 100 },
+  { name: 'Entertainment',  icon: entertainmentIcon,  budget: 150 },
+  { name: 'Transportation', icon: transportationIcon, budget: 100 },
+  { name: 'Other',          icon: otherIcon,          budget: 100 },
 ];
 
 // Returns 7 consecutive dates starting at today + dayOffset
@@ -73,7 +73,7 @@ function getHeatmapColor(count: number): string {
 export default function HomeScreen() {
   const { top } = useSafeAreaInsets();
   const { token: paramToken } = useLocalSearchParams();
-  const { token: contextToken } = useAuth();
+  const { token: contextToken, checkInResults } = useAuth();
   const token = contextToken ?? paramToken;
   const totalSaved = 362;
   const streak = 3;
@@ -83,6 +83,18 @@ export default function HomeScreen() {
   const [eventCounts, setEventCounts] = useState<{ [key: string]: number }>({});
   // Track which "YYYY-M" months have already been fetched so we don't re-request
   const [fetchedMonths, setFetchedMonths] = useState<Set<string>>(new Set());
+
+  const categories = useMemo(() => {
+    const totals: Record<string, number> = {};
+    checkInResults
+      .filter(r => r.visited)
+      .forEach(r => { totals[r.category] = (totals[r.category] || 0) + r.amount; });
+    return CATEGORY_META.map(meta => ({
+      ...meta,
+      amount: totals[meta.name] || 0,
+      fill: Math.min((totals[meta.name] || 0) / meta.budget, 1),
+    }));
+  }, [checkInResults]);
 
   const visibleDates = getVisibleDates(dayOffset);
 
@@ -252,12 +264,12 @@ export default function HomeScreen() {
 
       {/* ── Spending categories card ── */}
       <View style={styles.categoriesCard}>
-        {CATEGORIES.map((cat, i) => (
+        {categories.map((cat, i) => (
           <View
             key={cat.name}
             style={[
               styles.categoryRow,
-              i < CATEGORIES.length - 1 && styles.categoryDivider,
+              i < categories.length - 1 && styles.categoryDivider,
             ]}
           >
             {/* Category icon */}

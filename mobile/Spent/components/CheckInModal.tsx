@@ -47,6 +47,7 @@ interface Location {
   address: string;
   icon: any;
   cardColor: string;
+  amount: number;
 }
 
 const LOCATIONS: Location[] = [
@@ -57,6 +58,7 @@ const LOCATIONS: Location[] = [
     address: '100 Newbury St, Boston',
     icon: coffeeIcon,
     cardColor: '#d2f3e2',
+    amount: 7,
   },
   {
     id: 2,
@@ -65,6 +67,7 @@ const LOCATIONS: Location[] = [
     address: '279 Harvard St, Brookline',
     icon: shoppingIcon,
     cardColor: '#fde8f5',
+    amount: 20,
   },
   {
     id: 3,
@@ -73,6 +76,7 @@ const LOCATIONS: Location[] = [
     address: '1700 Washington St, Boston',
     icon: entertainmentIcon,
     cardColor: '#ede8fd',
+    amount: 40,
   },
   {
     id: 4,
@@ -81,6 +85,7 @@ const LOCATIONS: Location[] = [
     address: '36 JFK St, Cambridge',
     icon: otherIcon,
     cardColor: '#fef3e2',
+    amount: 15,
   },
 ];
 
@@ -218,6 +223,7 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
       location: location.name,
       category: location.category,
       visited: direction === 'right',
+      amount: direction === 'right' ? location.amount : 0,
       timestamp: new Date(),
     });
 
