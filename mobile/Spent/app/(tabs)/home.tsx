@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,25 +8,26 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useAuth } from '../../context/AuthContext';
 
-// ── Figma assets ─────────────────────────────────────────────────────────────
-const chevronLeft       = 'https://www.figma.com/api/mcp/asset/29d4cd83-5769-4622-827d-488bc94d03b3';
-const chevronRight      = 'https://www.figma.com/api/mcp/asset/dc5486d9-29b7-4a71-ba7f-c892a19bf46a';
-const dollarSignLarge   = 'https://www.figma.com/api/mcp/asset/0f6e0447-a97d-4bfd-95c1-f1becf9134fc';
-const clipboardIcon     = 'https://www.figma.com/api/mcp/asset/ac495e4e-612e-4910-b34f-1271c52cd1cb';
-const flameIcon         = 'https://www.figma.com/api/mcp/asset/afe96631-c180-4067-87e5-f8a4cc8a92ec';
-const heroLandscape     = 'https://www.figma.com/api/mcp/asset/478154a9-f4bd-4c5d-9558-4b2db077bf28';
-const bagIcon           = 'https://www.figma.com/api/mcp/asset/b2bfba23-da0e-4ca0-b85d-601389f7f890';
-const seeMoreArrow      = 'https://www.figma.com/api/mcp/asset/64462d58-b07c-415f-8ce1-b4d0777a565a';
-const foodIcon          = 'https://www.figma.com/api/mcp/asset/237e30c9-0fa4-4418-b406-1ea25bc1f65a';
-const budgetMarkerLine  = 'https://www.figma.com/api/mcp/asset/8fb89c31-d63b-4909-aa8a-e78c8c9c9db4';
-const dollarSignSmall   = 'https://www.figma.com/api/mcp/asset/6b630cd4-2d61-4f88-8178-a3f0f0e7e5cd';
-const shoppingIcon      = 'https://www.figma.com/api/mcp/asset/8631324c-4776-4ce3-b4df-118d4b2e2e28';
-const coffeeIcon        = 'https://www.figma.com/api/mcp/asset/20435e45-b93b-4f06-85e7-6f7491f5f8a4';
-const entertainmentIcon = 'https://www.figma.com/api/mcp/asset/cd3982e4-f59d-40ab-91fc-b4522b987210';
-const transportationIcon= 'https://www.figma.com/api/mcp/asset/02b80772-e0ac-4cea-88fc-5bc45370f2ea';
-const otherIcon         = 'https://www.figma.com/api/mcp/asset/13e7cb32-89dc-4402-a5e6-4cb0ddc8a7c5';
-const calendarIcon      = 'https://www.figma.com/api/mcp/asset/104a3826-9173-4913-9a42-db8787ca07a3';
+// ── Figma assets (local SVGs with CSS vars resolved) ─────────────────────────
+const chevronLeft        = require('../../assets/icons/chevronLeft.svg');
+const chevronRight       = require('../../assets/icons/chevronRight.svg');
+const dollarSignLarge    = require('../../assets/icons/dollarSignLarge.svg');
+const clipboardIcon      = require('../../assets/icons/clipboardIcon.svg');
+const flameIcon          = require('../../assets/icons/flameIcon.svg');
+const heroLandscape      = require('../../assets/icons/heroLandscape.svg');
+const bagIcon            = require('../../assets/icons/bagIcon.svg');
+const seeMoreArrow       = require('../../assets/icons/seeMoreArrow.svg');
+const foodIcon           = require('../../assets/icons/foodIcon.svg');
+const budgetMarkerLine   = require('../../assets/icons/budgetMarkerLine.svg');
+const dollarSignSmall    = require('../../assets/icons/dollarSignSmall.svg');
+const shoppingIcon       = require('../../assets/icons/shoppingIcon.svg');
+const coffeeIcon         = require('../../assets/icons/coffeeIcon.svg');
+const entertainmentIcon  = require('../../assets/icons/entertainmentIcon.svg');
+const transportationIcon = require('../../assets/icons/transportationIcon.svg');
+const otherIcon          = require('../../assets/icons/otherIcon.svg');
+const calendarIcon       = require('../../assets/icons/calendarIcon.svg');
 // ─────────────────────────────────────────────────────────────────────────────
 
 const WEEK_DAYS = ['Mon', 'Tues', 'Wed', 'Thurs', 'Fri', 'Sat', 'Sun'];
@@ -40,24 +41,96 @@ const CATEGORIES = [
   { name: 'Other',          icon: otherIcon,          amount: 11, fill: 0.62 },
 ];
 
-function getWeekDates(): number[] {
+function getWeekDates(offsetWeeks: number = 0): Date[] {
   const curr = new Date();
   const dayOfWeek = curr.getDay(); // 0 = Sun
   const monday = new Date(curr);
-  monday.setDate(curr.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+  monday.setDate(curr.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + offsetWeeks * 7);
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
-    return d.getDate();
+    return d;
   });
 }
 
+function toDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Green heatmap: no events = mint, more events = darker green
+function getHeatmapColor(count: number): string {
+  if (!count) return '#d2f3e2';
+  const t = Math.min(count, 5) / 5;
+  // interpolate from mint #d2f3e2 → dark green #0a542f
+  const r = Math.round(210 - t * (210 - 10));
+  const g = Math.round(243 - t * (243 - 84));
+  const b = Math.round(226 - t * (226 - 47));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
 export default function HomeScreen() {
-  const { token } = useLocalSearchParams();
-  const weekDates = getWeekDates();
+  const { token: paramToken } = useLocalSearchParams();
+  const { token: contextToken } = useAuth();
+  const token = contextToken ?? paramToken;
   const totalSaved = 362;
   const streak = 3;
   const [weekOffset, setWeekOffset] = useState(0);
+  const [eventCounts, setEventCounts] = useState<{ [key: string]: number }>({});
+
+  const weekDates = getWeekDates(weekOffset);
+
+  // Mirror the exact event-fetching + date-parsing logic from dashboard.tsx
+  useEffect(() => {
+    if (!token) return;
+
+    const fetchEvents = async () => {
+      try {
+        const today = new Date();
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
+
+        const response = await fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${monthStart.toISOString()}&timeMax=${monthEnd.toISOString()}&singleEvents=true&orderBy=startTime`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        const data = await response.json();
+        if (!response.ok) throw new Error('Failed to fetch events');
+
+        const counts: { [key: string]: number } = {};
+
+        (data.items || []).forEach((event: any) => {
+          let dateStr = '';
+
+          if (event.start?.date) {
+            if (/^\d{4}-\d{2}-\d{2}$/.test(event.start.date)) {
+              dateStr = event.start.date;
+            } else {
+              const match = event.start.date.match(/^[A-Za-z]+,\s([A-Za-z]+)\s(\d{1,2}),\s(\d{4})$/);
+              if (match) {
+                const monthNames: Record<string, string> = {
+                  January: '01', February: '02', March: '03', April: '04',
+                  May: '05', June: '06', July: '07', August: '08',
+                  September: '09', October: '10', November: '11', December: '12',
+                };
+                dateStr = `${match[3]}-${monthNames[match[1]]}-${match[2].padStart(2, '0')}`;
+              }
+            }
+          } else if (event.start?.dateTime) {
+            dateStr = event.start.dateTime.split('T')[0];
+          }
+
+          if (dateStr) counts[dateStr] = (counts[dateStr] || 0) + 1;
+        });
+
+        setEventCounts(counts);
+      } catch (_) {
+        // silently fail on home screen
+      }
+    };
+
+    fetchEvents();
+  }, [token]);
 
   return (
     <ScrollView
@@ -70,24 +143,28 @@ export default function HomeScreen() {
         {/* Today pill */}
         <View style={styles.todayPill}>
           <TouchableOpacity onPress={() => setWeekOffset(weekOffset - 1)}>
-            <Image source={{ uri: chevronLeft }} style={styles.chevronImg} contentFit="contain" />
+            <Image source={chevronLeft} style={styles.chevronImg} contentFit="contain" />
           </TouchableOpacity>
           <Text style={styles.todayLabel}>Today</Text>
           <TouchableOpacity onPress={() => setWeekOffset(weekOffset + 1)}>
-            <Image source={{ uri: chevronRight }} style={styles.chevronImg} contentFit="contain" />
+            <Image source={chevronRight} style={styles.chevronImg} contentFit="contain" />
           </TouchableOpacity>
         </View>
 
         {/* Day cards */}
         <View style={styles.weekRow}>
-          {WEEK_DAYS.map((day, i) => (
-            <View key={day} style={styles.dayCard}>
-              <Text style={styles.dayLabel}>{day}</Text>
-              <View style={styles.dayCircle}>
-                <Text style={styles.dayNumber}>{weekDates[i]}</Text>
+          {WEEK_DAYS.map((day, i) => {
+            const date = weekDates[i];
+            const count = eventCounts[toDateStr(date)] || 0;
+            return (
+              <View key={day} style={styles.dayCard}>
+                <Text style={styles.dayLabel}>{day}</Text>
+                <View style={[styles.dayCircle, { backgroundColor: getHeatmapColor(count) }]}>
+                  <Text style={styles.dayNumber}>{date.getDate()}</Text>
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
       </View>
 
@@ -98,7 +175,7 @@ export default function HomeScreen() {
           {/* Savings amount */}
           <View style={styles.savingsGroup}>
             <View style={styles.savingsAmountRow}>
-              <Image source={{ uri: dollarSignLarge }} style={styles.dollarLarge} contentFit="contain" />
+              <Image source={dollarSignLarge} style={styles.dollarLarge} contentFit="contain" />
               <Text style={styles.savedAmount}>{totalSaved}</Text>
             </View>
             <Text style={styles.savedLabel}>saved with Spent</Text>
@@ -112,12 +189,12 @@ export default function HomeScreen() {
                 router.push({ pathname: '/checkin', params: { token } })
               }
             >
-              <Image source={{ uri: clipboardIcon }} style={styles.clipboardImg} contentFit="contain" />
+              <Image source={clipboardIcon} style={styles.clipboardImg} contentFit="contain" />
               <Text style={styles.checkInLabel}>check in</Text>
             </TouchableOpacity>
 
             <View style={styles.streakBadge}>
-              <Image source={{ uri: flameIcon }} style={styles.flameImg} contentFit="contain" />
+              <Image source={flameIcon} style={styles.flameImg} contentFit="contain" />
               <Text style={styles.streakCount}>{streak}</Text>
             </View>
           </View>
@@ -125,7 +202,7 @@ export default function HomeScreen() {
 
         {/* Landscape illustration */}
         <Image
-          source={{ uri: heroLandscape }}
+          source={heroLandscape}
           style={styles.landscapeImg}
           contentFit="cover"
         />
@@ -134,12 +211,12 @@ export default function HomeScreen() {
       {/* ── Your Spending header ── */}
       <View style={styles.sectionRow}>
         <View style={styles.sectionTitleGroup}>
-          <Image source={{ uri: bagIcon }} style={styles.sectionIconImg} contentFit="contain" />
+          <Image source={bagIcon} style={styles.sectionIconImg} contentFit="contain" />
           <Text style={styles.sectionTitle}>Your Spending</Text>
         </View>
         <TouchableOpacity style={styles.seeMorePill}>
           <Text style={styles.seeMoreText}>see more</Text>
-          <Image source={{ uri: seeMoreArrow }} style={styles.seeMoreArrowImg} contentFit="contain" />
+          <Image source={seeMoreArrow} style={styles.seeMoreArrowImg} contentFit="contain" />
         </TouchableOpacity>
       </View>
 
@@ -154,7 +231,7 @@ export default function HomeScreen() {
             ]}
           >
             {/* Category icon */}
-            <Image source={{ uri: cat.icon }} style={styles.categoryIcon} contentFit="contain" />
+            <Image source={cat.icon} style={styles.categoryIcon} contentFit="contain" />
 
             {/* Category name */}
             <Text style={styles.categoryName}>{cat.name}</Text>
@@ -163,13 +240,13 @@ export default function HomeScreen() {
             <View style={styles.progressTrack}>
               <View style={[styles.progressFill, { width: `${cat.fill * 100}%` }]} />
               <View style={[styles.budgetMarker, { left: `${cat.fill * 100}%` }]}>
-                <Image source={{ uri: budgetMarkerLine }} style={styles.budgetMarkerImg} contentFit="fill" />
+                <Image source={budgetMarkerLine} style={styles.budgetMarkerImg} contentFit="fill" />
               </View>
             </View>
 
             {/* Amount */}
             <View style={styles.amountGroup}>
-              <Image source={{ uri: dollarSignSmall }} style={styles.dollarSmall} contentFit="contain" />
+              <Image source={dollarSignSmall} style={styles.dollarSmall} contentFit="contain" />
               <Text style={styles.categoryAmount}>{cat.amount}</Text>
             </View>
           </View>
@@ -178,7 +255,7 @@ export default function HomeScreen() {
 
       {/* ── Upcoming Expenses header ── */}
       <View style={styles.sectionRow}>
-        <Image source={{ uri: calendarIcon }} style={styles.calendarIconImg} contentFit="contain" />
+        <Image source={calendarIcon} style={styles.calendarIconImg} contentFit="contain" />
         <Text style={styles.sectionTitle}>Upcoming Expenses</Text>
       </View>
     </ScrollView>

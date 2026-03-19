@@ -5,6 +5,7 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import * as firebase from '../src/config/firebase';
+import { AuthProvider } from '../context/AuthContext';
 export const unstable_settings = {
   anchor: '(tabs)',
 };
@@ -16,15 +17,17 @@ export default function RootLayout() {
 
   //  write some console log to test firebase is working 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    <AuthProvider>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
 
-        <Stack.Screen name="signup" options={{ headerShown: false }} />
-        <Stack.Screen name="checkin" options={{ title: 'Check In' }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+          <Stack.Screen name="signup" options={{ headerShown: false }} />
+          <Stack.Screen name="checkin" options={{ title: 'Check In' }} />
+          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        </Stack>
+        <StatusBar style="auto" />
+      </ThemeProvider>
+    </AuthProvider>
   );
 }

@@ -5,6 +5,7 @@ import * as Google from "expo-auth-session/providers/google";
 import * as AuthSession from "expo-auth-session";
 import { useRouter } from "expo-router";
 import Constants from "expo-constants";
+import { useAuth } from "../../context/AuthContext";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -12,6 +13,7 @@ const isExpoGo = Constants.appOwnership === "expo";
 
 export default function SignUp() {
   const router = useRouter();
+  const { setToken } = useAuth();
   const [signingIn, setSigningIn] = useState(false);
 
   const redirectUri = isExpoGo
@@ -34,6 +36,7 @@ export default function SignUp() {
       const accessToken = response.authentication?.accessToken;
       console.log("Google access token:", accessToken); // <-- Print the token
       if (accessToken) {
+        setToken(accessToken);
         // Pass the access token to dashboard
         router.push({
           pathname: "/dashboard",
