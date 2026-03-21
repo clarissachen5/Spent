@@ -24,15 +24,18 @@ import { GOOGLE_MAPS_KEY } from '../constants/config';
 // ── Icons ─────────────────────────────────────────────────────────────────────
 const coffeeIcon        = require('../assets/icons/coffeeIcon.svg');
 const shoppingIcon      = require('../assets/icons/shoppingIcon.svg');
-const entertainmentIcon = require('../assets/icons/entertainmentIcon.svg');
+const foodIcon          = require('../assets/icons/foodIcon.svg');
 const otherIcon         = require('../assets/icons/otherIcon.svg');
 const clipboardIcon     = require('../assets/icons/clipboardIcon.svg');
 const flameIcon         = require('../assets/icons/flameIcon.svg');
 const dollarSignSmall   = require('../assets/icons/dollarSignSmall.svg');
+const dollarSignLarge   = require('../assets/icons/dollarSignLarge.svg');
 // ─────────────────────────────────────────────────────────────────────────────
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.28;
+const SWIPE_THRESHOLD   = SCREEN_WIDTH * 0.28;
+const SLIDER_TRACK_W    = SCREEN_WIDTH * 0.82 - 48; // CARD_WIDTH - 48px padding
+const THUMB_RADIUS      = 13;
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const DARK_GREEN  = '#0a542f';
@@ -46,17 +49,17 @@ const CARD_HEIGHT = SCREEN_HEIGHT * 0.56;
 const MAPS_KEY = GOOGLE_MAPS_KEY;
 
 function staticMapUrl(address: string): string {
-  const addr = encodeURIComponent(address);
+  const addr   = encodeURIComponent(address);
   const marker = encodeURIComponent(`color:green|${address}`);
-  const url =
+  return (
     `https://maps.googleapis.com/maps/api/staticmap` +
     `?center=${addr}` +
     `&zoom=16` +
     `&size=600x400` +
     `&scale=2` +
     `&markers=${marker}` +
-    `&key=${MAPS_KEY}`;
-  return url;
+    `&key=${MAPS_KEY}`
+  );
 }
 
 interface Location {
@@ -88,17 +91,17 @@ const LOCATIONS: Location[] = [
   {
     id: 3,
     name: 'Barcelona Wine Bar',
-    category: 'Entertainment',
+    category: 'Food',
     address: '1700 Washington St, Boston, MA',
-    icon: entertainmentIcon,
+    icon: foodIcon,
     accentColor: '#ede8fd',
   },
   {
     id: 4,
     name: 'CVS Pharmacy',
-    category: 'Other',
+    category: 'Shopping',
     address: '36 JFK St, Cambridge, MA',
-    icon: otherIcon,
+    icon: shoppingIcon,
     accentColor: '#fef3e2',
   },
 ];
@@ -106,40 +109,81 @@ const LOCATIONS: Location[] = [
 // ── Swipe card ────────────────────────────────────────────────────────────────
 interface SwipeCardProps {
   location: Location;
-  onSwipe: (direction: 'left' | 'right') => void;
+  onSwipe: (direction: 'left' | 'right', amount?: number) => void;
   isTop: boolean;
   stackIndex: number;
 }
 
 function SwipeCard({ location, onSwipe, isTop, stackIndex }: SwipeCardProps) {
+  const [isFlipped, setIsFlipped]       = useState(false);
+  const [displayAmount, setDisplayAmount] = useState(0);
+
+  // ── Main card translation (swipe left/right) ──
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
 
-  const gesture = Gesture.Pan()
-    .enabled(isTop)
+  // ── Flip progress: 0 = front face, 1 = back face ──
+  const flipProgress  = useSharedValue(0);
+
+  // ── Slider state ──
+  const thumbOffset  = useSharedValue(0);
+  const startOffset  = useSharedValue(0);
+
+  // ── Main swipe gesture (disabled once flipped) ──
+  const mainGesture = Gesture.Pan()
+    .enabled(isTop && !isFlipped)
     .onUpdate(e => {
       translateX.value = e.translationX;
       translateY.value = e.translationY * 0.15;
     })
     .onEnd(e => {
-      if (Math.abs(e.translationX) > SWIPE_THRESHOLD) {
+      if (e.translationX > SWIPE_THRESHOLD) {
+        // Snap back to centre, then flip to spending card
+        translateX.value = withSpring(0);
+        translateY.value = withSpring(0);
+        flipProgress.value = withSpring(1, { damping: 14, stiffness: 120 });
+        runOnJS(setIsFlipped)(true);
+      } else if (e.translationX < -SWIPE_THRESHOLD) {
+        // Fly off to the left → skipped
         translateX.value = withSpring(
-          e.translationX > 0 ? SCREEN_WIDTH * 1.6 : -SCREEN_WIDTH * 1.6,
-          { velocity: e.velocityX }
+          -SCREEN_WIDTH * 1.6,
+          { velocity: e.velocityX },
+          () => runOnJS(onSwipe)('left'),
         );
-        runOnJS(onSwipe)(e.translationX > 0 ? 'right' : 'left');
       } else {
         translateX.value = withSpring(0);
         translateY.value = withSpring(0);
       }
     });
 
-  const cardAnimStyle = useAnimatedStyle(() => {
+  // ── Slider gesture (only active when flipped) ──
+  const sliderGesture = Gesture.Pan()
+    .enabled(isFlipped)
+    .onBegin(() => {
+      startOffset.value = thumbOffset.value;
+    })
+    .onUpdate(e => {
+      const next = Math.max(0, Math.min(SLIDER_TRACK_W, startOffset.value + e.translationX));
+      thumbOffset.value = next;
+      runOnJS(setDisplayAmount)(Math.round((next / SLIDER_TRACK_W) * 100));
+    });
+
+  // ── Log button: fly off right then record ──
+  const handleLog = () => {
+    translateX.value = withSpring(
+      SCREEN_WIDTH * 1.6,
+      { velocity: 800 },
+      () => runOnJS(onSwipe)('right', displayAmount),
+    );
+  };
+
+  // ── Animated styles ──
+  const cardWrapperStyle = useAnimatedStyle(() => {
     const rotate = interpolate(
       translateX.value,
       [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
       [-16, 0, 16],
-      Extrapolation.CLAMP
+      Extrapolation.CLAMP,
     );
     return {
       transform: [
@@ -150,75 +194,137 @@ function SwipeCard({ location, onSwipe, isTop, stackIndex }: SwipeCardProps) {
     };
   });
 
+  // Front face: rotates from 0° → 180°; fades out at midpoint
+  const frontFaceStyle = useAnimatedStyle(() => ({
+    transform: [
+      { perspective: 1200 },
+      { rotateY: `${interpolate(flipProgress.value, [0, 1], [0, 180])}deg` },
+    ],
+    opacity: interpolate(flipProgress.value, [0.38, 0.5], [1, 0], Extrapolation.CLAMP),
+  }));
+
+  // Back face: rotates from 180° → 360°; fades in at midpoint
+  const backFaceStyle = useAnimatedStyle(() => ({
+    transform: [
+      { perspective: 1200 },
+      { rotateY: `${interpolate(flipProgress.value, [0, 1], [180, 360])}deg` },
+    ],
+    opacity: interpolate(flipProgress.value, [0.5, 0.62], [0, 1], Extrapolation.CLAMP),
+  }));
+
+  // Swipe stamp overlays
   const visitedOpacity = useAnimatedStyle(() => ({
     opacity: interpolate(translateX.value, [0, SWIPE_THRESHOLD], [0, 1], Extrapolation.CLAMP),
   }));
-
   const skippedOpacity = useAnimatedStyle(() => ({
     opacity: interpolate(translateX.value, [-SWIPE_THRESHOLD, 0], [1, 0], Extrapolation.CLAMP),
   }));
 
-  // Each card in the stack scales down slightly and peeks below the top card
+  // Slider thumb and fill
+  const thumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: thumbOffset.value }],
+  }));
+  const fillStyle = useAnimatedStyle(() => ({
+    width: thumbOffset.value + THUMB_RADIUS,
+  }));
+
   const scale      = 1 - stackIndex * 0.06;
-  const peekOffset = stackIndex * 14; // positive = shifts down so cards peek below
+  const peekOffset = stackIndex * 14;
 
   return (
-    <GestureDetector gesture={gesture}>
+    <GestureDetector gesture={mainGesture}>
       <Animated.View
         style={[
-          styles.card,
-          // Lower cards: scaled down and shifted down so edges peek below top card
+          styles.cardWrapper,
           !isTop && {
             transform: [{ scale }, { translateY: peekOffset }],
             zIndex: 10 - stackIndex,
           },
-          // Top card: full animated transform
-          isTop && [cardAnimStyle, { zIndex: 10 }],
+          isTop && [cardWrapperStyle, { zIndex: 10 }],
         ]}
       >
-        {/* ── Map ── */}
-        <View style={styles.mapContainer}>
-          {stackIndex <= 1 && (
-            <RNImage
-              source={{ uri: staticMapUrl(location.address) }}
-              style={styles.mapImage}
-              resizeMode="cover"
-            />
+        {/* ── Front face ── */}
+        <Animated.View style={[styles.cardFace, frontFaceStyle]}>
+          {/* Map */}
+          <View style={styles.mapContainer}>
+            {stackIndex <= 1 && (
+              <RNImage
+                source={{ uri: staticMapUrl(location.address) }}
+                style={styles.mapImage}
+                resizeMode="cover"
+              />
+            )}
+            <View style={[styles.categoryPill, { backgroundColor: location.accentColor }]}>
+              <Image source={location.icon} style={styles.categoryIcon} contentFit="contain" />
+              <Text style={styles.categoryText}>{location.category}</Text>
+            </View>
+          </View>
+
+          {/* Card body */}
+          <View style={styles.cardBody}>
+            <Text style={styles.locationName}>{location.name}</Text>
+            <Text style={styles.locationAddress}>{location.address}</Text>
+            <View style={styles.spendRow}>
+              <Image source={dollarSignSmall} style={styles.dollarIcon} contentFit="contain" />
+              <Text style={styles.spendText}>Did you spend here today?</Text>
+            </View>
+          </View>
+
+          {/* Swipe stamps */}
+          {isTop && (
+            <>
+              <Animated.View style={[styles.visitedOverlay, visitedOpacity]}>
+                <View style={[styles.overlayStamp, { borderColor: DARK_GREEN }]}>
+                  <Text style={[styles.overlayStampText, { color: DARK_GREEN }]}>VISITED</Text>
+                </View>
+              </Animated.View>
+              <Animated.View style={[styles.skippedOverlay, skippedOpacity]}>
+                <View style={[styles.overlayStamp, { borderColor: '#c0392b' }]}>
+                  <Text style={[styles.overlayStampText, { color: '#c0392b' }]}>SKIPPED</Text>
+                </View>
+              </Animated.View>
+            </>
           )}
-          {/* Category pill over map */}
-          <View style={[styles.categoryPill, { backgroundColor: location.accentColor }]}>
-            <Image source={location.icon} style={styles.categoryIcon} contentFit="contain" />
-            <Text style={styles.categoryText}>{location.category}</Text>
+        </Animated.View>
+
+        {/* ── Back face (spending card) ── */}
+        <Animated.View style={[styles.cardFace, styles.cardBack, backFaceStyle]}>
+          {/* Top accent band */}
+          <View style={[styles.backBand, { backgroundColor: location.accentColor }]}>
+            <View style={[styles.categoryPill, { backgroundColor: 'rgba(255,255,255,0.55)' }]}>
+              <Image source={location.icon} style={styles.categoryIcon} contentFit="contain" />
+              <Text style={styles.categoryText}>{location.category}</Text>
+            </View>
+            <Text style={styles.backLocationName}>{location.name}</Text>
           </View>
-        </View>
 
-        {/* ── Card body ── */}
-        <View style={styles.cardBody}>
-          <Text style={styles.locationName}>{location.name}</Text>
-          <Text style={styles.locationAddress}>{location.address}</Text>
-
-          {/* Spend hint row */}
-          <View style={styles.spendRow}>
-            <Image source={dollarSignSmall} style={styles.dollarIcon} contentFit="contain" />
-            <Text style={styles.spendText}>Did you spend here today?</Text>
+          {/* Amount display */}
+          <View style={styles.amountRow}>
+            <Image source={dollarSignLarge} style={styles.dollarLarge} contentFit="contain" />
+            <Text style={styles.amountText}>{displayAmount}</Text>
           </View>
-        </View>
 
-        {/* ── Swipe overlays ── */}
-        {isTop && (
-          <>
-            <Animated.View style={[styles.visitedOverlay, visitedOpacity]}>
-              <View style={[styles.overlayStamp, { borderColor: DARK_GREEN }]}>
-                <Text style={[styles.overlayStampText, { color: DARK_GREEN }]}>VISITED</Text>
+          <Text style={styles.howMuchLabel}>How much did you spend?</Text>
+
+          {/* Slider */}
+          <GestureDetector gesture={sliderGesture}>
+            <View style={styles.sliderWrapper}>
+              <View style={styles.sliderTrack}>
+                <Animated.View style={[styles.sliderFill, fillStyle]} />
+                <Animated.View style={[styles.sliderThumb, thumbStyle]} />
               </View>
-            </Animated.View>
-            <Animated.View style={[styles.skippedOverlay, skippedOpacity]}>
-              <View style={[styles.overlayStamp, { borderColor: '#c0392b' }]}>
-                <Text style={[styles.overlayStampText, { color: '#c0392b' }]}>SKIPPED</Text>
+              <View style={styles.sliderLabels}>
+                <Text style={styles.sliderLabel}>$0</Text>
+                <Text style={styles.sliderLabel}>$100</Text>
               </View>
-            </Animated.View>
-          </>
-        )}
+            </View>
+          </GestureDetector>
+
+          {/* Log button */}
+          <TouchableOpacity style={styles.logBtn} onPress={handleLog} activeOpacity={0.85}>
+            <Text style={styles.logBtnText}>Log ${displayAmount}</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </Animated.View>
     </GestureDetector>
   );
@@ -234,12 +340,13 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
   const { addCheckInResult } = useAuth();
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const handleSwipe = (direction: 'left' | 'right') => {
+  const handleSwipe = (direction: 'left' | 'right', amount?: number) => {
     const location = LOCATIONS[currentIndex];
     addCheckInResult({
       location: location.name,
       category: location.category,
       visited: direction === 'right',
+      amount: direction === 'right' ? (amount ?? 0) : undefined,
       timestamp: new Date(),
     });
 
@@ -388,18 +495,16 @@ const styles = StyleSheet.create({
   // Card stack
   cardStack: {
     width: CARD_WIDTH,
-    // Extra height so the peeking cards below the top card are visible (3 cards * 14px offset)
     height: CARD_HEIGHT + 42,
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
-  card: {
+
+  // Wrapper (handles position + swipe transforms)
+  cardWrapper: {
     position: 'absolute',
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-    borderRadius: 24,
-    backgroundColor: '#fff',
-    overflow: 'hidden',
     shadowColor: '#000',
     shadowOpacity: 0.22,
     shadowRadius: 18,
@@ -407,20 +512,28 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
 
-  // Map
+  // Each face sits at the same position inside the wrapper
+  cardFace: {
+    position: 'absolute',
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
+    borderRadius: 24,
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+  },
+
+  // ── Front face ──
   mapContainer: {
     width: '100%',
     height: MAP_HEIGHT,
     position: 'relative',
+    backgroundColor: MINT,
   },
   mapImage: {
     width: CARD_WIDTH,
     height: MAP_HEIGHT,
   },
   categoryPill: {
-    position: 'absolute',
-    bottom: 12,
-    left: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -437,8 +550,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: DARK_GREEN,
   },
-
-  // Card body
   cardBody: {
     flex: 1,
     paddingHorizontal: 20,
@@ -495,6 +606,107 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
     letterSpacing: 2,
+  },
+
+  // ── Back face ──
+  cardBack: {
+    justifyContent: 'flex-start',
+  },
+  backBand: {
+    width: '100%',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 18,
+    gap: 10,
+  },
+  backLocationName: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: DARK_GREEN,
+  },
+  amountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    gap: 6,
+  },
+  dollarLarge: {
+    width: 28,
+    height: 36,
+  },
+  amountText: {
+    fontSize: 56,
+    fontWeight: '800',
+    color: DARK_GREEN,
+    lineHeight: 64,
+  },
+  howMuchLabel: {
+    fontSize: 12,
+    color: '#888',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+
+  // Slider
+  sliderWrapper: {
+    paddingHorizontal: 24,
+    marginTop: 20,
+  },
+  sliderTrack: {
+    height: 6,
+    backgroundColor: '#e8e8e8',
+    borderRadius: 3,
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  sliderFill: {
+    position: 'absolute',
+    left: 0,
+    height: 6,
+    backgroundColor: DARK_GREEN,
+    borderRadius: 3,
+  },
+  sliderThumb: {
+    position: 'absolute',
+    left: -THUMB_RADIUS,
+    top: -(THUMB_RADIUS - 3),
+    width: THUMB_RADIUS * 2,
+    height: THUMB_RADIUS * 2,
+    borderRadius: THUMB_RADIUS,
+    backgroundColor: '#fff',
+    borderWidth: 2.5,
+    borderColor: DARK_GREEN,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  sliderLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  sliderLabel: {
+    fontSize: 11,
+    color: '#aaa',
+    fontWeight: '500',
+  },
+
+  // Log button
+  logBtn: {
+    marginHorizontal: 24,
+    marginTop: 20,
+    backgroundColor: LIME_GREEN,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  logBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: DARK_GREEN,
   },
 
   // Progress dots

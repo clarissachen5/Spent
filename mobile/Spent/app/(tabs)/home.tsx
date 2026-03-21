@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -36,14 +36,17 @@ const calendarIcon       = require('../../assets/icons/calendarIcon.svg');
 // Indexed by Date.getDay() (0 = Sun)
 const DAY_NAMES = ['Sun', 'Mon', 'Tues', 'Wed', 'Thurs', 'Fri', 'Sat'];
 
-const CATEGORIES = [
-  { name: 'Food',           icon: foodIcon,           amount: 11, fill: 0.62 },
-  { name: 'Shopping',       icon: shoppingIcon,       amount: 11, fill: 0.62 },
-  { name: 'Coffee',         icon: coffeeIcon,         amount: 11, fill: 0.62 },
-  { name: 'Entertainment',  icon: entertainmentIcon,  amount: 11, fill: 0.62 },
-  { name: 'Transportation', icon: transportationIcon, amount: 11, fill: 0.62 },
-  { name: 'Other',          icon: otherIcon,          amount: 11, fill: 0.62 },
+const CATEGORY_CONFIG = [
+  { name: 'Food',           icon: foodIcon           },
+  { name: 'Shopping',       icon: shoppingIcon       },
+  { name: 'Coffee',         icon: coffeeIcon         },
+  { name: 'Entertainment',  icon: entertainmentIcon  },
+  { name: 'Transportation', icon: transportationIcon },
+  { name: 'Other',          icon: otherIcon          },
 ];
+
+// Max dollars per category before the bar is full
+const CATEGORY_MAX = 100;
 
 // Returns 7 consecutive dates starting at today + dayOffset
 function getVisibleDates(dayOffset: number = 0): Date[] {
@@ -73,8 +76,18 @@ function getHeatmapColor(count: number): string {
 export default function HomeScreen() {
   const { top } = useSafeAreaInsets();
   const { token: paramToken } = useLocalSearchParams();
-  const { token: contextToken } = useAuth();
+  const { token: contextToken, checkInResults } = useAuth();
   const token = contextToken ?? paramToken;
+
+  const categoryTotals = useMemo(() => {
+    const totals: { [key: string]: number } = {};
+    checkInResults.forEach(r => {
+      if (r.visited && r.amount != null) {
+        totals[r.category] = (totals[r.category] || 0) + r.amount;
+      }
+    });
+    return totals;
+  }, [checkInResults]);
   const totalSaved = 362;
   const streak = 3;
   const [dayOffset, setDayOffset] = useState(0);
@@ -252,35 +265,35 @@ export default function HomeScreen() {
 
       {/* ── Spending categories card ── */}
       <View style={styles.categoriesCard}>
-        {CATEGORIES.map((cat, i) => (
-          <View
-            key={cat.name}
-            style={[
-              styles.categoryRow,
-              i < CATEGORIES.length - 1 && styles.categoryDivider,
-            ]}
-          >
-            {/* Category icon */}
-            <Image source={cat.icon} style={styles.categoryIcon} contentFit="contain" />
+        {CATEGORY_CONFIG.map((cat, i) => {
+          const amount = categoryTotals[cat.name] ?? 0;
+          const fill   = Math.min(amount / CATEGORY_MAX, 1);
+          return (
+            <View
+              key={cat.name}
+              style={[
+                styles.categoryRow,
+                i < CATEGORY_CONFIG.length - 1 && styles.categoryDivider,
+              ]}
+            >
+              <Image source={cat.icon} style={styles.categoryIcon} contentFit="contain" />
+              <Text style={styles.categoryName}>{cat.name}</Text>
 
-            {/* Category name */}
-            <Text style={styles.categoryName}>{cat.name}</Text>
+              {/* Progress bar — read-only, driven by check-in data */}
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${fill * 100}%` }]} />
+                <View style={[styles.budgetMarker, { left: `${fill * 100}%` }]}>
+                  <Image source={budgetMarkerLine} style={styles.budgetMarkerImg} contentFit="fill" />
+                </View>
+              </View>
 
-            {/* Progress bar with budget marker */}
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${cat.fill * 100}%` }]} />
-              <View style={[styles.budgetMarker, { left: `${cat.fill * 100}%` }]}>
-                <Image source={budgetMarkerLine} style={styles.budgetMarkerImg} contentFit="fill" />
+              <View style={styles.amountGroup}>
+                <Image source={dollarSignSmall} style={styles.dollarSmall} contentFit="contain" />
+                <Text style={styles.categoryAmount}>{amount}</Text>
               </View>
             </View>
-
-            {/* Amount */}
-            <View style={styles.amountGroup}>
-              <Image source={dollarSignSmall} style={styles.dollarSmall} contentFit="contain" />
-              <Text style={styles.categoryAmount}>{cat.amount}</Text>
-            </View>
-          </View>
-        ))}
+          );
+        })}
       </View>
 
       {/* ── Upcoming Expenses header ── */}
