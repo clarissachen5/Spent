@@ -11,6 +11,7 @@ export interface CheckInResult {
 interface AuthContextType {
   token: string | null;
   setToken: (token: string) => void;
+  logout: () => void;
   checkInResults: CheckInResult[];
   addCheckInResult: (result: CheckInResult) => void;
 }
@@ -18,6 +19,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   token: null,
   setToken: () => {},
+  logout: () => {},
   checkInResults: [],
   addCheckInResult: () => {},
 });
@@ -30,8 +32,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setCheckInResults(prev => [...prev, result]);
   };
 
+  const logout = () => {
+    setToken(null as any);
+    setCheckInResults([]);
+  };
+
   return (
-    <AuthContext.Provider value={{ token, setToken, checkInResults, addCheckInResult }}>
+    <AuthContext.Provider value={{ token, setToken, logout, checkInResults, addCheckInResult }}>
       {children}
     </AuthContext.Provider>
   );

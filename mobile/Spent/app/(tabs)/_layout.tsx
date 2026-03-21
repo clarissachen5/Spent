@@ -11,6 +11,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      initialRouteName="signup"
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
@@ -18,7 +19,14 @@ export default function TabLayout() {
       }}>
       <Tabs.Screen
         name="index"
-        options={{ href: null }} // hides it from the tab bar
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="signup"
+        options={{
+          href: null,
+          tabBarStyle: { display: 'none' },
+        }}
       />
       <Tabs.Screen
         name="home"
@@ -28,27 +36,27 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="dashboard"
+        name="calendar"
         options={{
-          title: 'Dashboard',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="chart.bar.fill" color={color} />,
+          title: 'Calendar',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="calendar" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="signup"
+        name="settings"
         options={{
-          title: 'Sign Up',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.fill" color={color} />,
+          title: 'Settings',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="gearshape.fill" color={color} />,
         }}
+      />
+      <Tabs.Screen
+        name="dashboard"
+        options={{ href: null }}
       />
       <Tabs.Screen
         name="explore"
-        options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
-        }}
+        options={{ href: null }}
       />
     </Tabs>
-    
   );
 }

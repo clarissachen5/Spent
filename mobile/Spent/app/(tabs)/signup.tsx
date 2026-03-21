@@ -37,13 +37,7 @@ export default function SignUp() {
       console.log("Google access token:", accessToken); // <-- Print the token
       if (accessToken) {
         setToken(accessToken);
-        // Pass the access token to dashboard
-        router.push({
-          pathname: "/dashboard",
-          params: {
-            token: accessToken, // not tokenObj!
-          },
-        });
+        router.replace('/(tabs)/home');
       } else {
         console.warn("Authentication object is missing accessToken.");
       }
