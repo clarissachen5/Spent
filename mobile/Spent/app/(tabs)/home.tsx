@@ -75,7 +75,7 @@ function getHeatmapColor(count: number): string {
 
 export default function HomeScreen() {
   const { top } = useSafeAreaInsets();
-  const { token: paramToken } = useLocalSearchParams();
+  const { token: paramToken, checkIn } = useLocalSearchParams();
   const { token: contextToken, checkInResults } = useAuth();
   const token = contextToken ?? paramToken;
 
@@ -93,6 +93,10 @@ export default function HomeScreen() {
   const [dayOffset, setDayOffset] = useState(0);
   const [checkInVisible, setCheckInVisible] = useState(false);
   const panStartOffset = useRef(0);
+
+  useEffect(() => {
+    if (checkIn === '1') setCheckInVisible(true);
+  }, []);
   const [eventCounts, setEventCounts] = useState<{ [key: string]: number }>({});
   // Track which "YYYY-M" months have already been fetched so we don't re-request
   const [fetchedMonths, setFetchedMonths] = useState<Set<string>>(new Set());
