@@ -18,7 +18,7 @@ import Animated, {
   interpolate,
   Extrapolation,
 } from 'react-native-reanimated';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, DetectedLocation } from '../context/AuthContext';
 import { GOOGLE_MAPS_KEY } from '../constants/config';
 
 // ── Local icons ───────────────────────────────────────────────────────────────
@@ -64,14 +64,15 @@ interface LocationItem {
   price: number;
 }
 interface Location {
-  id:           number;
-  name:         string;
-  category:     string;
-  address:      string;
-  neighborhood: string;
-  icon:         any;
-  accentColor:  string;
-  items:        LocationItem[];
+  id:              string | number;
+  name:            string;
+  category:        string;
+  address:         string;
+  neighborhood:    string;
+  icon:            any;
+  accentColor:     string;
+  items:           LocationItem[];
+  detectedLocId?:  string; // set when this card came from a real tracked visit
 }
 
 const LOCATIONS: Location[] = [
@@ -116,6 +117,38 @@ const LOCATIONS: Location[] = [
     ],
   },
 ];
+
+// ── Fallback items by category for detected locations ─────────────────────────
+const CATEGORY_ITEMS: Record<string, LocationItem[]> = {
+  Coffee:         [{ icon: smallCoffeeIcon, label: 'small coffee', price: 3 }, { icon: mediumCoffeeIcon, label: 'medium coffee', price: 6 }, { icon: largeCoffeeIcon, label: 'coffee + pastry', price: 11 }],
+  Food:           [{ icon: foodIcon, label: 'snack', price: 8 }, { icon: foodIcon, label: 'meal', price: 16 }, { icon: foodIcon, label: 'large meal', price: 28 }],
+  Shopping:       [{ icon: shoppingIcon, label: 'small purchase', price: 10 }, { icon: shoppingIcon, label: 'purchase', price: 25 }, { icon: shoppingIcon, label: 'big purchase', price: 50 }],
+  Entertainment:  [{ icon: foodIcon, label: 'ticket', price: 15 }, { icon: foodIcon, label: 'event', price: 30 }, { icon: foodIcon, label: 'experience', price: 60 }],
+  Transportation: [{ icon: shoppingIcon, label: 'ride', price: 5 }, { icon: shoppingIcon, label: 'trip', price: 15 }, { icon: shoppingIcon, label: 'day pass', price: 30 }],
+  Other:          [{ icon: shoppingIcon, label: 'small', price: 5 }, { icon: shoppingIcon, label: 'medium', price: 15 }, { icon: shoppingIcon, label: 'large', price: 30 }],
+};
+
+const CATEGORY_ICON: Record<string, any> = {
+  Coffee: coffeeIcon, Food: foodIcon, Shopping: shoppingIcon, Other: shoppingIcon,
+};
+const CATEGORY_COLOR: Record<string, string> = {
+  Coffee: PINK_BG, Food: '#F5F0FF', Shopping: '#F0FBF5', Other: '#FFFBF0',
+};
+
+function detectedToLocation(d: DetectedLocation): Location {
+  const cat = d.category;
+  return {
+    id:            d.id,
+    name:          d.place_name,
+    category:      cat,
+    address:       d.address,
+    neighborhood:  d.address,
+    icon:          CATEGORY_ICON[cat] ?? shoppingIcon,
+    accentColor:   CATEGORY_COLOR[cat] ?? PINK_BG,
+    items:         CATEGORY_ITEMS[cat] ?? CATEGORY_ITEMS.Other,
+    detectedLocId: d.id,
+  };
+}
 
 function formatCheckInTime(): string {
   const d    = new Date();
@@ -507,11 +540,20 @@ interface CheckInModalProps {
 }
 
 export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
-  const { addCheckInResult } = useAuth();
+  const { addCheckInResult, pendingLocations, markLocationShown } = useAuth();
   const [currentIndex, setCurrentIndex] = useState(0);
 
+  // Use real tracked locations if available, otherwise fall back to hardcoded demo data
+  const locations: Location[] = pendingLocations.length > 0
+    ? pendingLocations.map(detectedToLocation)
+    : LOCATIONS;
+
+  // Reset to first card whenever the visible locations list changes
+  const locKey = locations.map(l => l.id).join(',');
+  React.useEffect(() => { setCurrentIndex(0); }, [locKey]);
+
   const handleSwipe = (dir: 'left' | 'right', amount?: number) => {
-    const location = LOCATIONS[currentIndex];
+    const location = locations[currentIndex];
     addCheckInResult({
       location:  location.name,
       category:  location.category,
@@ -519,15 +561,19 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
       amount:    dir === 'right' ? (amount ?? 0) : undefined,
       timestamp: new Date(),
     });
+    // Mark the detected location as shown so it won't appear again
+    if (location.detectedLocId) {
+      markLocationShown(location.detectedLocId);
+    }
     const next = currentIndex + 1;
-    if (next >= LOCATIONS.length) {
+    if (next >= locations.length) {
       setTimeout(() => { setCurrentIndex(0); onClose(); }, 350);
     } else {
       setCurrentIndex(next);
     }
   };
 
-  const remaining = LOCATIONS.slice(currentIndex);
+  const remaining = locations.slice(currentIndex);
   const active    = remaining[0];
   const collapsed = remaining.slice(1);
 
@@ -578,7 +624,7 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
         )}
 
         <View style={styles.dots}>
-          {LOCATIONS.map((_, i) => (
+          {locations.map((_, i) => (
             <View
               key={i}
               style={[
