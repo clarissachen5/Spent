@@ -202,6 +202,7 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
   const scrubOffset  = useSharedValue(-ITEM_GAP);
 
   const scrubItems = useMemo(() => buildScrubItems(location), [location]);
+  const prices     = useMemo(() => scrubItems.map(i => i.price), [scrubItems]);
   const ticks      = useMemo(() => buildTicks(scrubItems.length), [scrubItems.length]);
   const rulerW     = RULER_PAD + (scrubItems.length - 1) * ITEM_GAP + RULER_PAD;
 
@@ -302,13 +303,13 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
       const snapped = Math.round(raw / TICK_UNIT) * TICK_UNIT;
       const next    = Math.max(minOff, Math.min(maxOff, snapped));
       scrubOffset.value = next;
-      const val = computeValueFromOffset(next, scrubItems);
+      const val = computeValueFromOffset(next, prices);
       runOnJS(setSelectedPrice)(val.price);
       runOnJS(setSelectedIsNothing)(val.isNothing);
     })
     .onEnd(() => {
       // already on a tick — just confirm displayed value
-      const val = computeValueFromOffset(scrubOffset.value, scrubItems);
+      const val = computeValueFromOffset(scrubOffset.value, prices);
       runOnJS(setSelectedPrice)(val.price);
       runOnJS(setSelectedIsNothing)(val.isNothing);
     });

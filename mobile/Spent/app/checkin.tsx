@@ -33,8 +33,10 @@ export default function CheckIn() {
     Movies: 18,
   });
 
+  const tickMarks = [0, 25, 50, 75, 100];
+
   const handleSpend = (location: { name: string; category: string }) => {
-    const amount = sliderValues[location.name] ?? 0;
+    const amount = Number(sliderValues[location.name] ?? 0);
 
     router.replace({
       pathname: "/(tabs)/dashboard",
@@ -53,7 +55,7 @@ export default function CheckIn() {
 
       {locations.map((location) => {
         const isActive = activeLocation === location.name;
-        const currentValue = sliderValues[location.name] ?? 0;
+        const currentValue = Number(sliderValues[location.name] ?? 0);
 
         return (
           <View key={location.name} style={styles.cardContainer}>
@@ -74,7 +76,9 @@ export default function CheckIn() {
               <View style={styles.sliderContainer}>
                 <View style={styles.sliderHeader}>
                   <Text style={styles.sliderLabel}>Spend amount</Text>
-                  <Text style={styles.sliderValue}>${currentValue}</Text>
+                  <Text style={styles.sliderValue}>
+                    ${Number.isFinite(currentValue) ? Math.round(currentValue) : 0}
+                  </Text>
                 </View>
 
                 <Slider
@@ -82,21 +86,26 @@ export default function CheckIn() {
                   minimumValue={0}
                   maximumValue={100}
                   step={1}
-                  value={currentValue}
+                  value={Number.isFinite(currentValue) ? currentValue : 0}
                   minimumTrackTintColor="#C7F36B"
                   maximumTrackTintColor="#D9D9D9"
                   thumbTintColor="#111"
-                  onValueChange={(value) =>
+                  onValueChange={(value) => {
+                    if (typeof value !== "number" || isNaN(value)) return;
+
                     setSliderValues((prev) => ({
                       ...prev,
                       [location.name]: Math.round(value),
-                    }))
-                  }
+                    }));
+                  }}
                 />
 
                 <View style={styles.rangeLabels}>
-                  <Text style={styles.rangeText}>$0</Text>
-                  <Text style={styles.rangeText}>$100</Text>
+                  {tickMarks.map((val) => (
+                    <Text key={val} style={styles.rangeText}>
+                      ${val}
+                    </Text>
+                  ))}
                 </View>
 
                 <TouchableOpacity
