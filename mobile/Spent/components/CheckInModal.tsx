@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -22,129 +22,145 @@ import { useAuth } from '../context/AuthContext';
 import { GOOGLE_MAPS_KEY } from '../constants/config';
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
-const coffeeIcon        = require('../assets/icons/coffeeIcon.svg');
-const shoppingIcon      = require('../assets/icons/shoppingIcon.svg');
-const foodIcon          = require('../assets/icons/foodIcon.svg');
-const otherIcon         = require('../assets/icons/otherIcon.svg');
-const clipboardIcon     = require('../assets/icons/clipboardIcon.svg');
-const flameIcon         = require('../assets/icons/flameIcon.svg');
-const dollarSignSmall   = require('../assets/icons/dollarSignSmall.svg');
-const dollarSignLarge   = require('../assets/icons/dollarSignLarge.svg');
+const coffeeIcon      = require('../assets/icons/coffeeIcon.svg');
+const shoppingIcon    = require('../assets/icons/shoppingIcon.svg');
+const foodIcon        = require('../assets/icons/foodIcon.svg');
+const clipboardIcon   = require('../assets/icons/clipboardIcon.svg');
+const flameIcon       = require('../assets/icons/flameIcon.svg');
+const dollarSignSmall = require('../assets/icons/dollarSignSmall.svg');
+const dollarSignLarge = require('../assets/icons/dollarSignLarge.svg');
 // ─────────────────────────────────────────────────────────────────────────────
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SWIPE_THRESHOLD   = SCREEN_WIDTH * 0.28;
-const SLIDER_TRACK_W    = SCREEN_WIDTH * 0.82 - 48; // CARD_WIDTH - 48px padding
-const THUMB_RADIUS      = 13;
+const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.28;
+const SLIDER_TRACK_W  = SCREEN_WIDTH * 0.88 - 48;
+const THUMB_RADIUS    = 13;
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const DARK_GREEN  = '#0a542f';
-const LIME_GREEN  = '#cdf545';
-const MINT        = '#d2f3e2';
-const OVERLAY_BG  = 'rgba(131,135,117,0.92)';
-const CARD_WIDTH  = SCREEN_WIDTH * 0.82;
-const CARD_HEIGHT = SCREEN_HEIGHT * 0.56;
+const DARK_GREEN   = '#0a542f';
+const LIME_GREEN   = '#cdf545';
+const OVERLAY_BG   = 'rgba(131,135,117,0.92)';
+const CARD_WIDTH   = SCREEN_WIDTH * 0.88;
+const CARD_HEIGHT  = SCREEN_HEIGHT * 0.44;
+const COLLAPSED_H  = 52;
+const CARD_RADIUS  = 20;
 // ─────────────────────────────────────────────────────────────────────────────
 
-const MAPS_KEY = GOOGLE_MAPS_KEY;
-
-function staticMapUrl(address: string): string {
-  const addr   = encodeURIComponent(address);
-  const marker = encodeURIComponent(`color:green|${address}`);
-  return (
-    `https://maps.googleapis.com/maps/api/staticmap` +
-    `?center=${addr}` +
-    `&zoom=16` +
-    `&size=600x400` +
-    `&scale=2` +
-    `&markers=${marker}` +
-    `&key=${MAPS_KEY}`
-  );
-}
+// Collapsed card colors: index 0 = closest to front (lightest), 2 = furthest back (darkest)
+const COLLAPSED_BG   = ['#D8D8D8', '#FFFFFF', '#302C6E'];
+const COLLAPSED_TEXT = ['#1e1d19', '#1e1d19', '#FFFFFF'];
 
 interface Location {
-  id: number;
-  name: string;
-  category: string;
-  address: string;
-  icon: any;
-  accentColor: string;
+  id:           number;
+  name:         string;
+  category:     string;
+  address:      string;
+  neighborhood: string;
+  icon:         any;
+  accentColor:  string;
 }
 
 const LOCATIONS: Location[] = [
   {
-    id: 1,
-    name: 'Starbucks',
-    category: 'Coffee',
-    address: '100 Newbury St, Boston, MA',
-    icon: coffeeIcon,
-    accentColor: MINT,
+    id:           1,
+    name:         'Starbucks',
+    category:     'Coffee',
+    address:      '100 Newbury St, Boston, MA',
+    neighborhood: 'Back Bay, MA',
+    icon:         coffeeIcon,
+    accentColor:  '#FFF0F8',
   },
   {
-    id: 2,
-    name: 'Brookline Booksmith',
-    category: 'Shopping',
-    address: '279 Harvard St, Brookline, MA',
-    icon: shoppingIcon,
-    accentColor: '#fde8f5',
+    id:           2,
+    name:         'Brookline Booksmith',
+    category:     'Shopping',
+    address:      '279 Harvard St, Brookline, MA',
+    neighborhood: 'Coolidge Corner, MA',
+    icon:         shoppingIcon,
+    accentColor:  '#F0FBF5',
   },
   {
-    id: 3,
-    name: 'Barcelona Wine Bar',
-    category: 'Food',
-    address: '1700 Washington St, Boston, MA',
-    icon: foodIcon,
-    accentColor: '#ede8fd',
+    id:           3,
+    name:         'Barcelona Wine Bar',
+    category:     'Food',
+    address:      '1700 Washington St, Boston, MA',
+    neighborhood: 'South End, MA',
+    icon:         foodIcon,
+    accentColor:  '#F5F0FF',
   },
   {
-    id: 4,
-    name: 'CVS Pharmacy',
-    category: 'Shopping',
-    address: '36 JFK St, Cambridge, MA',
-    icon: shoppingIcon,
-    accentColor: '#fef3e2',
+    id:           4,
+    name:         'CVS Pharmacy',
+    category:     'Shopping',
+    address:      '36 JFK St, Cambridge, MA',
+    neighborhood: 'Harvard Square, MA',
+    icon:         shoppingIcon,
+    accentColor:  '#FFFBF0',
   },
 ];
 
-// ── Swipe card ────────────────────────────────────────────────────────────────
-interface SwipeCardProps {
-  location: Location;
-  onSwipe: (direction: 'left' | 'right', amount?: number) => void;
-  isTop: boolean;
-  stackIndex: number;
+function formatCheckInTime(): string {
+  const d    = new Date();
+  const h    = d.getHours() % 12 || 12;
+  const m    = String(d.getMinutes()).padStart(2, '0');
+  const ampm = d.getHours() >= 12 ? 'pm' : 'am';
+  return `Today @${h}:${m}${ampm}`;
 }
 
-function SwipeCard({ location, onSwipe, isTop, stackIndex }: SwipeCardProps) {
-  const [isFlipped, setIsFlipped]       = useState(false);
+function staticMapUrl(address: string): string {
+  const addr   = encodeURIComponent(address);
+  const marker = encodeURIComponent(`color:0x0a542f|${address}`);
+  return (
+    `https://maps.googleapis.com/maps/api/staticmap` +
+    `?center=${addr}&zoom=16&size=600x320&scale=2&maptype=roadmap` +
+    `&markers=${marker}&key=${GOOGLE_MAPS_KEY}`
+  );
+}
+
+// ── Collapsed card ─────────────────────────────────────────────────────────────
+function CollapsedCard({ location, distFromFront }: { location: Location; distFromFront: number }) {
+  const idx = Math.min(distFromFront, 2);
+  return (
+    <View style={[styles.collapsedCard, { backgroundColor: COLLAPSED_BG[idx] }]}>
+      <Image source={location.icon} style={styles.collapsedIcon} contentFit="contain" />
+      <Text style={[styles.collapsedName, { color: COLLAPSED_TEXT[idx] }]}>{location.name}</Text>
+    </View>
+  );
+}
+
+// ── Active (expanded) card ─────────────────────────────────────────────────────
+interface ActiveCardProps {
+  location: Location;
+  onSwipe:  (direction: 'left' | 'right', amount?: number) => void;
+}
+
+function ActiveCard({ location, onSwipe }: ActiveCardProps) {
+  const [isFlipped, setIsFlipped]         = useState(false);
   const [displayAmount, setDisplayAmount] = useState(0);
+  const checkInTime = useRef(formatCheckInTime()).current;
 
-  // ── Main card translation (swipe left/right) ──
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-
-  // ── Flip progress: 0 = front face, 1 = back face ──
-  const flipProgress  = useSharedValue(0);
-
-  // ── Slider state ──
+  const translateX   = useSharedValue(0);
+  const translateY   = useSharedValue(0);
+  const flipProgress = useSharedValue(0);
   const thumbOffset  = useSharedValue(0);
   const startOffset  = useSharedValue(0);
 
-  // ── Main swipe gesture (disabled once flipped) ──
+  // ── Main swipe gesture ──
   const mainGesture = Gesture.Pan()
-    .enabled(isTop && !isFlipped)
+    .enabled(!isFlipped)
     .onUpdate(e => {
       translateX.value = e.translationX;
-      translateY.value = e.translationY * 0.15;
+      translateY.value = e.translationY * 0.1;
     })
     .onEnd(e => {
       if (e.translationX > SWIPE_THRESHOLD) {
-        // Snap back to centre, then flip to spending card
+        // Snap back then flip to spending card
         translateX.value = withSpring(0);
         translateY.value = withSpring(0);
         flipProgress.value = withSpring(1, { damping: 14, stiffness: 120 });
         runOnJS(setIsFlipped)(true);
       } else if (e.translationX < -SWIPE_THRESHOLD) {
-        // Fly off to the left → skipped
+        // Fly off left → skipped
         translateX.value = withSpring(
           -SCREEN_WIDTH * 1.6,
           { velocity: e.velocityX },
@@ -156,19 +172,16 @@ function SwipeCard({ location, onSwipe, isTop, stackIndex }: SwipeCardProps) {
       }
     });
 
-  // ── Slider gesture (only active when flipped) ──
+  // ── Slider gesture (spending card) ──
   const sliderGesture = Gesture.Pan()
     .enabled(isFlipped)
-    .onBegin(() => {
-      startOffset.value = thumbOffset.value;
-    })
+    .onBegin(() => { startOffset.value = thumbOffset.value; })
     .onUpdate(e => {
       const next = Math.max(0, Math.min(SLIDER_TRACK_W, startOffset.value + e.translationX));
       thumbOffset.value = next;
       runOnJS(setDisplayAmount)(Math.round((next / SLIDER_TRACK_W) * 100));
     });
 
-  // ── Log button: fly off right then record ──
   const handleLog = () => {
     translateX.value = withSpring(
       SCREEN_WIDTH * 1.6,
@@ -178,12 +191,9 @@ function SwipeCard({ location, onSwipe, isTop, stackIndex }: SwipeCardProps) {
   };
 
   // ── Animated styles ──
-  const cardWrapperStyle = useAnimatedStyle(() => {
+  const wrapperStyle = useAnimatedStyle(() => {
     const rotate = interpolate(
-      translateX.value,
-      [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
-      [-16, 0, 16],
-      Extrapolation.CLAMP,
+      translateX.value, [-SCREEN_WIDTH, 0, SCREEN_WIDTH], [-10, 0, 10], Extrapolation.CLAMP,
     );
     return {
       transform: [
@@ -194,8 +204,7 @@ function SwipeCard({ location, onSwipe, isTop, stackIndex }: SwipeCardProps) {
     };
   });
 
-  // Front face: rotates from 0° → 180°; fades out at midpoint
-  const frontFaceStyle = useAnimatedStyle(() => ({
+  const frontStyle = useAnimatedStyle(() => ({
     transform: [
       { perspective: 1200 },
       { rotateY: `${interpolate(flipProgress.value, [0, 1], [0, 180])}deg` },
@@ -203,8 +212,7 @@ function SwipeCard({ location, onSwipe, isTop, stackIndex }: SwipeCardProps) {
     opacity: interpolate(flipProgress.value, [0.38, 0.5], [1, 0], Extrapolation.CLAMP),
   }));
 
-  // Back face: rotates from 180° → 360°; fades in at midpoint
-  const backFaceStyle = useAnimatedStyle(() => ({
+  const backStyle = useAnimatedStyle(() => ({
     transform: [
       { perspective: 1200 },
       { rotateY: `${interpolate(flipProgress.value, [0, 1], [180, 360])}deg` },
@@ -212,98 +220,72 @@ function SwipeCard({ location, onSwipe, isTop, stackIndex }: SwipeCardProps) {
     opacity: interpolate(flipProgress.value, [0.5, 0.62], [0, 1], Extrapolation.CLAMP),
   }));
 
-  // Swipe stamp overlays
   const visitedOpacity = useAnimatedStyle(() => ({
     opacity: interpolate(translateX.value, [0, SWIPE_THRESHOLD], [0, 1], Extrapolation.CLAMP),
   }));
   const skippedOpacity = useAnimatedStyle(() => ({
     opacity: interpolate(translateX.value, [-SWIPE_THRESHOLD, 0], [1, 0], Extrapolation.CLAMP),
   }));
+  const thumbStyle = useAnimatedStyle(() => ({ transform: [{ translateX: thumbOffset.value }] }));
+  const fillStyle  = useAnimatedStyle(() => ({ width: thumbOffset.value + THUMB_RADIUS }));
 
-  // Slider thumb and fill
-  const thumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: thumbOffset.value }],
-  }));
-  const fillStyle = useAnimatedStyle(() => ({
-    width: thumbOffset.value + THUMB_RADIUS,
-  }));
-
-  const scale      = 1 - stackIndex * 0.06;
-  const peekOffset = stackIndex * 14;
+  const MAP_HEIGHT = CARD_HEIGHT * 0.52;
 
   return (
     <GestureDetector gesture={mainGesture}>
-      <Animated.View
-        style={[
-          styles.cardWrapper,
-          !isTop && {
-            transform: [{ scale }, { translateY: peekOffset }],
-            zIndex: 10 - stackIndex,
-          },
-          isTop && [cardWrapperStyle, { zIndex: 10 }],
-        ]}
-      >
+      <Animated.View style={[styles.cardWrapper, wrapperStyle]}>
+
         {/* ── Front face ── */}
-        <Animated.View style={[styles.cardFace, frontFaceStyle]}>
-          {/* Map */}
-          <View style={styles.mapContainer}>
-            {stackIndex <= 1 && (
-              <RNImage
-                source={{ uri: staticMapUrl(location.address) }}
-                style={styles.mapImage}
-                resizeMode="cover"
-              />
-            )}
-            <View style={[styles.categoryPill, { backgroundColor: location.accentColor }]}>
-              <Image source={location.icon} style={styles.categoryIcon} contentFit="contain" />
-              <Text style={styles.categoryText}>{location.category}</Text>
+        <Animated.View style={[styles.cardFace, { backgroundColor: location.accentColor }, frontStyle]}>
+
+          {/* Name row */}
+          <View style={styles.nameRow}>
+            <Image source={location.icon} style={styles.activeIcon} contentFit="contain" />
+            <Text style={styles.activeName}>{location.name}</Text>
+          </View>
+
+          {/* Time + neighborhood */}
+          <View style={styles.timeRow}>
+            <View style={styles.timePinkBar} />
+            <View>
+              <Text style={styles.timeText}>{checkInTime}</Text>
+              <Text style={styles.neighborhoodText}>{location.neighborhood}</Text>
             </View>
           </View>
 
-          {/* Card body */}
-          <View style={styles.cardBody}>
-            <Text style={styles.locationName}>{location.name}</Text>
-            <Text style={styles.locationAddress}>{location.address}</Text>
-            <View style={styles.spendRow}>
-              <Image source={dollarSignSmall} style={styles.dollarIcon} contentFit="contain" />
-              <Text style={styles.spendText}>Did you spend here today?</Text>
-            </View>
-          </View>
+          {/* Map */}
+          <RNImage
+            source={{ uri: staticMapUrl(location.address) }}
+            style={[styles.mapImage, { height: MAP_HEIGHT }]}
+            resizeMode="cover"
+          />
 
           {/* Swipe stamps */}
-          {isTop && (
-            <>
-              <Animated.View style={[styles.visitedOverlay, visitedOpacity]}>
-                <View style={[styles.overlayStamp, { borderColor: DARK_GREEN }]}>
-                  <Text style={[styles.overlayStampText, { color: DARK_GREEN }]}>VISITED</Text>
-                </View>
-              </Animated.View>
-              <Animated.View style={[styles.skippedOverlay, skippedOpacity]}>
-                <View style={[styles.overlayStamp, { borderColor: '#c0392b' }]}>
-                  <Text style={[styles.overlayStampText, { color: '#c0392b' }]}>SKIPPED</Text>
-                </View>
-              </Animated.View>
-            </>
-          )}
+          <Animated.View style={[styles.visitedOverlay, visitedOpacity]}>
+            <View style={[styles.overlayStamp, { borderColor: DARK_GREEN }]}>
+              <Text style={[styles.overlayStampText, { color: DARK_GREEN }]}>VISITED</Text>
+            </View>
+          </Animated.View>
+          <Animated.View style={[styles.skippedOverlay, skippedOpacity]}>
+            <View style={[styles.overlayStamp, { borderColor: '#c0392b' }]}>
+              <Text style={[styles.overlayStampText, { color: '#c0392b' }]}>SKIPPED</Text>
+            </View>
+          </Animated.View>
         </Animated.View>
 
         {/* ── Back face (spending card) ── */}
-        <Animated.View style={[styles.cardFace, styles.cardBack, backFaceStyle]}>
-          {/* Top accent band */}
+        <Animated.View style={[styles.cardFace, styles.cardBack, backStyle]}>
+          {/* Accent band */}
           <View style={[styles.backBand, { backgroundColor: location.accentColor }]}>
-            <View style={[styles.categoryPill, { backgroundColor: 'rgba(255,255,255,0.55)' }]}>
-              <Image source={location.icon} style={styles.categoryIcon} contentFit="contain" />
-              <Text style={styles.categoryText}>{location.category}</Text>
-            </View>
-            <Text style={styles.backLocationName}>{location.name}</Text>
+            <Image source={location.icon} style={styles.collapsedIcon} contentFit="contain" />
+            <Text style={styles.activeName}>{location.name}</Text>
           </View>
 
-          {/* Amount display */}
+          {/* Amount */}
           <View style={styles.amountRow}>
             <Image source={dollarSignLarge} style={styles.dollarLarge} contentFit="contain" />
             <Text style={styles.amountText}>{displayAmount}</Text>
           </View>
-
           <Text style={styles.howMuchLabel}>How much did you spend?</Text>
 
           {/* Slider */}
@@ -325,6 +307,7 @@ function SwipeCard({ location, onSwipe, isTop, stackIndex }: SwipeCardProps) {
             <Text style={styles.logBtnText}>Log ${displayAmount}</Text>
           </TouchableOpacity>
         </Animated.View>
+
       </Animated.View>
     </GestureDetector>
   );
@@ -332,8 +315,8 @@ function SwipeCard({ location, onSwipe, isTop, stackIndex }: SwipeCardProps) {
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
 interface CheckInModalProps {
-  visible: boolean;
-  onClose: () => void;
+  visible:  boolean;
+  onClose:  () => void;
 }
 
 export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
@@ -343,25 +326,24 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
   const handleSwipe = (direction: 'left' | 'right', amount?: number) => {
     const location = LOCATIONS[currentIndex];
     addCheckInResult({
-      location: location.name,
-      category: location.category,
-      visited: direction === 'right',
-      amount: direction === 'right' ? (amount ?? 0) : undefined,
+      location:  location.name,
+      category:  location.category,
+      visited:   direction === 'right',
+      amount:    direction === 'right' ? (amount ?? 0) : undefined,
       timestamp: new Date(),
     });
-
     const next = currentIndex + 1;
     if (next >= LOCATIONS.length) {
-      setTimeout(() => {
-        setCurrentIndex(0);
-        onClose();
-      }, 350);
+      setTimeout(() => { setCurrentIndex(0); onClose(); }, 350);
     } else {
       setCurrentIndex(next);
     }
   };
 
   const remaining = LOCATIONS.slice(currentIndex);
+  const active    = remaining[0];
+  // upcoming cards shown collapsed above the active one, back-to-front order
+  const collapsed = remaining.slice(1);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -382,29 +364,26 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
 
         <Text style={styles.subtitle}>Swipe right if you visited, left if not</Text>
 
-        {/* ── Card stack ── */}
-        <View style={styles.cardStack}>
-          {remaining.length > 0
-            ? [...remaining].reverse().map((location, ri) => {
-                const stackIndex = remaining.length - 1 - ri;
-                return (
-                  <SwipeCard
-                    key={location.id}
-                    location={location}
-                    onSwipe={handleSwipe}
-                    isTop={stackIndex === 0}
-                    stackIndex={stackIndex}
-                  />
-                );
-              })
-            : (
-              <View style={styles.doneCard}>
-                <Text style={styles.doneTitle}>All done!</Text>
-                <Text style={styles.doneSubtitle}>Check-in saved.</Text>
-              </View>
-            )
-          }
-        </View>
+        {/* ── Stack ── */}
+        {remaining.length > 0 ? (
+          <View style={styles.stackContainer}>
+            {/* Collapsed upcoming cards — rendered back-to-front (top of screen = furthest back) */}
+            {[...collapsed].reverse().map((loc, i) => (
+              <CollapsedCard
+                key={loc.id}
+                location={loc}
+                distFromFront={collapsed.length - 1 - i}
+              />
+            ))}
+            {/* Active expanded card */}
+            <ActiveCard key={active.id} location={active} onSwipe={handleSwipe} />
+          </View>
+        ) : (
+          <View style={styles.doneCard}>
+            <Text style={styles.doneTitle}>All done!</Text>
+            <Text style={styles.doneSubtitle}>Check-in saved.</Text>
+          </View>
+        )}
 
         {/* ── Progress dots ── */}
         <View style={styles.dots}>
@@ -426,8 +405,6 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
-const MAP_HEIGHT = CARD_HEIGHT * 0.48;
-
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
@@ -437,7 +414,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
 
-  // Header
+  // ── Header ──
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -445,10 +422,7 @@ const styles = StyleSheet.create({
     width: CARD_WIDTH,
     marginBottom: 6,
   },
-  headerIcon: {
-    width: 18,
-    height: 22,
-  },
+  headerIcon: { width: 18, height: 22 },
   headerTitle: {
     flex: 1,
     fontSize: 20,
@@ -464,15 +438,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  flameIcon: {
-    width: 9,
-    height: 11,
-  },
-  streakText: {
-    fontSize: 12,
-    color: LIME_GREEN,
-    fontWeight: '600',
-  },
+  flameIcon: { width: 9, height: 11 },
+  streakText: { fontSize: 12, color: LIME_GREEN, fontWeight: '600' },
   closeBtn: {
     width: 30,
     height: 30,
@@ -481,116 +448,108 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeBtnText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
+  closeBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   subtitle: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.7)',
-    marginBottom: 24,
+    marginBottom: 20,
   },
 
-  // Card stack
-  cardStack: {
+  // ── Card stack container ──
+  stackContainer: {
     width: CARD_WIDTH,
-    height: CARD_HEIGHT + 42,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
+    gap: 6,
   },
 
-  // Wrapper (handles position + swipe transforms)
+  // ── Collapsed cards ──
+  collapsedCard: {
+    width: CARD_WIDTH,
+    height: COLLAPSED_H,
+    borderRadius: CARD_RADIUS,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  collapsedIcon: { width: 22, height: 22 },
+  collapsedName: { fontSize: 14, fontWeight: '700' },
+
+  // ── Active card wrapper (holds both faces) ──
   cardWrapper: {
-    position: 'absolute',
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
     shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 10,
   },
-
-  // Each face sits at the same position inside the wrapper
   cardFace: {
     position: 'absolute',
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-    borderRadius: 24,
-    backgroundColor: '#fff',
+    borderRadius: CARD_RADIUS,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
   },
 
-  // ── Front face ──
-  mapContainer: {
-    width: '100%',
-    height: MAP_HEIGHT,
-    position: 'relative',
-    backgroundColor: MINT,
-  },
-  mapImage: {
-    width: CARD_WIDTH,
-    height: MAP_HEIGHT,
-  },
-  categoryPill: {
+  // ── Front face layout ──
+  nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
+    gap: 10,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 10,
   },
-  categoryIcon: {
-    width: 16,
-    height: 16,
+  activeIcon: { width: 22, height: 22 },
+  activeName: { fontSize: 15, fontWeight: '700', color: '#1e1d19' },
+
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingHorizontal: 18,
+    marginBottom: 12,
   },
-  categoryText: {
-    fontSize: 11,
+  timePinkBar: {
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: '#FFB5DB',
+    alignSelf: 'stretch',
+  },
+  timeText: {
+    fontSize: 13,
     fontWeight: '600',
-    color: DARK_GREEN,
+    color: '#1e1d19',
   },
-  cardBody: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    justifyContent: 'space-between',
-  },
-  locationName: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: DARK_GREEN,
-  },
-  locationAddress: {
-    fontSize: 12,
-    color: '#888',
+  neighborhoodText: {
+    fontSize: 11,
+    color: '#999',
     marginTop: 2,
   },
-  spendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  dollarIcon: {
-    width: 14,
-    height: 14,
-  },
-  spendText: {
-    fontSize: 11,
-    color: '#aaa',
+
+  mapImage: {
+    width: CARD_WIDTH,
   },
 
-  // Swipe overlays
+  // Swipe stamps
   visitedOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10,84,47,0.12)',
+    backgroundColor: 'rgba(10,84,47,0.10)',
     alignItems: 'flex-start',
     justifyContent: 'flex-start',
     padding: 18,
   },
   skippedOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(192,57,43,0.1)',
+    backgroundColor: 'rgba(192,57,43,0.08)',
     alignItems: 'flex-end',
     justifyContent: 'flex-start',
     padding: 18,
@@ -602,57 +561,31 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     transform: [{ rotate: '-15deg' }],
   },
-  overlayStampText: {
-    fontSize: 18,
-    fontWeight: '900',
-    letterSpacing: 2,
-  },
+  overlayStampText: { fontSize: 18, fontWeight: '900', letterSpacing: 2 },
 
-  // ── Back face ──
+  // ── Back face (spending card) ──
   cardBack: {
+    backgroundColor: '#fff',
     justifyContent: 'flex-start',
   },
   backBand: {
-    width: '100%',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
-  },
-  backLocationName: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: DARK_GREEN,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
   },
   amountRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 20,
-    gap: 6,
+    marginTop: 12,
+    gap: 4,
   },
-  dollarLarge: {
-    width: 28,
-    height: 36,
-  },
-  amountText: {
-    fontSize: 56,
-    fontWeight: '800',
-    color: DARK_GREEN,
-    lineHeight: 64,
-  },
-  howMuchLabel: {
-    fontSize: 12,
-    color: '#888',
-    textAlign: 'center',
-    marginTop: 4,
-  },
-
-  // Slider
-  sliderWrapper: {
-    paddingHorizontal: 24,
-    marginTop: 20,
-  },
+  dollarLarge: { width: 24, height: 32 },
+  amountText: { fontSize: 52, fontWeight: '800', color: DARK_GREEN, lineHeight: 60 },
+  howMuchLabel: { fontSize: 11, color: '#888', textAlign: 'center', marginTop: 2 },
+  sliderWrapper: { paddingHorizontal: 24, marginTop: 16 },
   sliderTrack: {
     height: 6,
     backgroundColor: '#e8e8e8',
@@ -683,71 +616,34 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 4,
   },
-  sliderLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 10,
-  },
-  sliderLabel: {
-    fontSize: 11,
-    color: '#aaa',
-    fontWeight: '500',
-  },
-
-  // Log button
+  sliderLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
+  sliderLabel: { fontSize: 10, color: '#aaa', fontWeight: '500' },
   logBtn: {
     marginHorizontal: 24,
-    marginTop: 20,
+    marginTop: 16,
     backgroundColor: LIME_GREEN,
     borderRadius: 14,
-    paddingVertical: 14,
+    paddingVertical: 13,
     alignItems: 'center',
   },
-  logBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: DARK_GREEN,
-  },
+  logBtnText: { fontSize: 14, fontWeight: '700', color: DARK_GREEN },
 
-  // Progress dots
-  dots: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 24,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-  },
-  dotActive: {
-    backgroundColor: '#fff',
-    width: 22,
-    borderRadius: 4,
-  },
-  dotDone: {
-    backgroundColor: LIME_GREEN,
-  },
+  // ── Progress dots ──
+  dots: { flexDirection: 'row', gap: 8, marginTop: 20 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.3)' },
+  dotActive: { backgroundColor: '#fff', width: 22, borderRadius: 4 },
+  dotDone:   { backgroundColor: LIME_GREEN },
 
-  // Done state
+  // ── Done card ──
   doneCard: {
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-    borderRadius: 24,
-    backgroundColor: MINT,
+    borderRadius: CARD_RADIUS,
+    backgroundColor: '#d2f3e2',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
-  doneTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: DARK_GREEN,
-  },
-  doneSubtitle: {
-    fontSize: 14,
-    color: DARK_GREEN,
-    opacity: 0.7,
-  },
+  doneTitle:    { fontSize: 28, fontWeight: '700', color: DARK_GREEN },
+  doneSubtitle: { fontSize: 14, color: DARK_GREEN, opacity: 0.7 },
 });
