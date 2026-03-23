@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -21,31 +21,48 @@ import Animated, {
 import { useAuth } from '../context/AuthContext';
 import { GOOGLE_MAPS_KEY } from '../constants/config';
 
-// ── Icons ─────────────────────────────────────────────────────────────────────
+// ── Local icons ───────────────────────────────────────────────────────────────
 const coffeeIcon      = require('../assets/icons/coffeeIcon.svg');
 const shoppingIcon    = require('../assets/icons/shoppingIcon.svg');
 const foodIcon        = require('../assets/icons/foodIcon.svg');
 const clipboardIcon   = require('../assets/icons/clipboardIcon.svg');
 const flameIcon       = require('../assets/icons/flameIcon.svg');
-const dollarSignSmall = require('../assets/icons/dollarSignSmall.svg');
-const dollarSignLarge = require('../assets/icons/dollarSignLarge.svg');
-// ─────────────────────────────────────────────────────────────────────────────
+const moneySmallIcon  = require('../assets/icons/moneySmall.svg');
 
+// ── Figma item icons ──────────────────────────────────────────────────────────
+const smallCoffeeIcon  = require('../assets/icons/smallCoffee.svg');
+const mediumCoffeeIcon = require('../assets/icons/mediumCoffee.svg');
+const largeCoffeeIcon  = require('../assets/icons/largeCoffee.svg');
+const denyIcon         = require('../assets/icons/denyIcon.svg');
+
+// ── Dimensions ────────────────────────────────────────────────────────────────
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const CARD_WIDTH    = SCREEN_WIDTH * 0.88;
+const CARD_HEIGHT   = SCREEN_HEIGHT * 0.52;
+const CARD_RADIUS   = 20;
+const HEADER_H      = 62;
+const CONTENT_W     = CARD_WIDTH - 40;   // card has 20px side padding
+const ITEM_GAP      = CONTENT_W * 0.32;  // spacing between scrubber items
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.28;
-const SLIDER_TRACK_W  = SCREEN_WIDTH * 0.88 - 48;
-const THUMB_RADIUS    = 13;
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const DARK_GREEN   = '#0a542f';
-const LIME_GREEN   = '#cdf545';
-const OVERLAY_BG   = 'rgba(131,135,117,0.92)';
-const CARD_WIDTH   = SCREEN_WIDTH * 0.88;
-const CARD_HEIGHT  = SCREEN_HEIGHT * 0.44;
-const CARD_RADIUS  = 20;
-const HEADER_H     = 62; // height of each back card's peeking header row
-// ─────────────────────────────────────────────────────────────────────────────
+const DARK_GREEN  = '#0a542f';
+const LIME_GREEN  = '#cdf545';
+const OVERLAY_BG  = 'rgba(131,135,117,0.92)';
+const PINK_BG     = '#FFF0F8';
+const DARK_RED    = '#4F090B';
+const GRAY_TEXT   = '#A5A5A5';
+const LIGHT_GRAY  = '#DEDFDF';
+const PRICE_COLOR = '#800039';
+const PINK_BAR    = '#FFB5DB';
+const TICK_COLOR  = '#E5DCDE';
 
+// ── Data ──────────────────────────────────────────────────────────────────────
+interface LocationItem {
+  icon: any;
+  label: string;
+  price: number;
+}
 interface Location {
   id:           number;
   name:         string;
@@ -54,44 +71,49 @@ interface Location {
   neighborhood: string;
   icon:         any;
   accentColor:  string;
+  items:        LocationItem[];
 }
 
 const LOCATIONS: Location[] = [
   {
-    id:           1,
-    name:         'Starbucks',
-    category:     'Coffee',
-    address:      '100 Newbury St, Boston, MA',
-    neighborhood: 'Back Bay, MA',
-    icon:         coffeeIcon,
-    accentColor:  '#FFF0F8',
+    id: 1, name: 'Starbucks', category: 'Coffee',
+    address: '100 Newbury St, Boston, MA', neighborhood: 'Coolidge Corner, MA',
+    icon: coffeeIcon, accentColor: PINK_BG,
+    items: [
+      { icon: smallCoffeeIcon,  label: 'small coffee',  price: 3  },
+      { icon: mediumCoffeeIcon, label: 'medium coffee', price: 6  },
+      { icon: largeCoffeeIcon,  label: 'coffee + pastry', price: 11 },
+    ],
   },
   {
-    id:           2,
-    name:         'Brookline Booksmith',
-    category:     'Shopping',
-    address:      '279 Harvard St, Brookline, MA',
-    neighborhood: 'Coolidge Corner, MA',
-    icon:         shoppingIcon,
-    accentColor:  '#F0FBF5',
+    id: 2, name: 'Brookline Booksmith', category: 'Shopping',
+    address: '279 Harvard St, Brookline, MA', neighborhood: 'Coolidge Corner, MA',
+    icon: shoppingIcon, accentColor: '#F0FBF5',
+    items: [
+      { icon: shoppingIcon, label: 'bookmark',  price: 3  },
+      { icon: shoppingIcon, label: 'paperback', price: 15 },
+      { icon: shoppingIcon, label: 'hardcover', price: 28 },
+    ],
   },
   {
-    id:           3,
-    name:         'Barcelona Wine Bar',
-    category:     'Food',
-    address:      '1700 Washington St, Boston, MA',
-    neighborhood: 'South End, MA',
-    icon:         foodIcon,
-    accentColor:  '#F5F0FF',
+    id: 3, name: 'Barcelona Wine Bar', category: 'Food',
+    address: '1700 Washington St, Boston, MA', neighborhood: 'South End, MA',
+    icon: foodIcon, accentColor: '#F5F0FF',
+    items: [
+      { icon: foodIcon, label: 'wine glass', price: 12 },
+      { icon: foodIcon, label: 'appetizer',  price: 16 },
+      { icon: foodIcon, label: 'entrée',     price: 28 },
+    ],
   },
   {
-    id:           4,
-    name:         'CVS Pharmacy',
-    category:     'Shopping',
-    address:      '36 JFK St, Cambridge, MA',
-    neighborhood: 'Harvard Square, MA',
-    icon:         shoppingIcon,
-    accentColor:  '#FFFBF0',
+    id: 4, name: 'CVS Pharmacy', category: 'Shopping',
+    address: '36 JFK St, Cambridge, MA', neighborhood: 'Harvard Square, MA',
+    icon: shoppingIcon, accentColor: '#FFFBF0',
+    items: [
+      { icon: shoppingIcon, label: 'snacks',     price: 5  },
+      { icon: shoppingIcon, label: 'toiletries', price: 12 },
+      { icon: shoppingIcon, label: 'medicine',   price: 25 },
+    ],
   },
 ];
 
@@ -100,38 +122,125 @@ function formatCheckInTime(): string {
   const h    = d.getHours() % 12 || 12;
   const m    = String(d.getMinutes()).padStart(2, '0');
   const ampm = d.getHours() >= 12 ? 'pm' : 'am';
-  return `Today @${h}:${m}${ampm}`;
+  return `${h}:${m}${ampm}`;
 }
 
 function staticMapUrl(address: string): string {
   const addr   = encodeURIComponent(address);
-  const marker = encodeURIComponent(`color:0x0a542f|${address}`);
+  const marker = encodeURIComponent(`color:0x4F090B|${address}`);
   return (
     `https://maps.googleapis.com/maps/api/staticmap` +
-    `?center=${addr}&zoom=16&size=600x320&scale=2&maptype=roadmap` +
+    `?center=${addr}&zoom=16&size=600x400&scale=2&maptype=roadmap` +
     `&markers=${marker}&key=${GOOGLE_MAPS_KEY}`
   );
 }
 
+// ── Scrubber ruler ────────────────────────────────────────────────────────────
+const RULER_PAD   = CONTENT_W / 2;
+const TICK_UNIT   = 14;
+const TICK_SHORT  = 9;
+const TICK_TALL   = 20;
+const RULER_BELOW = 16;   // px below baseline for labels
+const RULER_CLIP_H = TICK_TALL + 30 + RULER_BELOW; // icons(30) + ticks(20) + labels(16) = 66
 
-// ── Active (expanded) card ─────────────────────────────────────────────────────
+interface ScrubItem extends LocationItem {
+  isNothing: boolean;
+}
+
+function buildScrubItems(location: Location): ScrubItem[] {
+  return [
+    { icon: denyIcon, label: 'nothing', price: 0, isNothing: true },
+    ...location.items.map(i => ({ ...i, isNothing: false })),
+  ];
+}
+
+function buildTicks(numItems: number): { x: number; height: number }[] {
+  const rulerW = RULER_PAD + (numItems - 1) * ITEM_GAP + RULER_PAD;
+  const result: { x: number; height: number }[] = [];
+  for (let x = 0; x <= rulerW; x += TICK_UNIT) {
+    const nearItem = Array.from({ length: numItems }).some(
+      (_, i) => Math.abs(RULER_PAD + i * ITEM_GAP - x) < TICK_UNIT / 2,
+    );
+    result.push({ x, height: nearItem ? TICK_TALL : TICK_SHORT });
+  }
+  return result;
+}
+
+function computeValueFromOffset(
+  off: number,
+  prices: number[],
+): { price: number; isNothing: boolean } {
+  'worklet';
+  const n   = prices.length;
+  const pos = Math.max(0, Math.min(n - 1, -off / ITEM_GAP));
+  if (pos < 0.01) return { price: 0, isNothing: true };
+  const lowerIdx = Math.floor(pos);
+  const upperIdx = Math.min(lowerIdx + 1, n - 1);
+  const t        = pos - lowerIdx;
+  const price    = prices[lowerIdx] + (prices[upperIdx] - prices[lowerIdx]) * t;
+  return { price: Math.round(price), isNothing: false };
+}
+
+// ── ActiveCard ────────────────────────────────────────────────────────────────
 interface ActiveCardProps {
   location: Location;
-  onSwipe:  (direction: 'left' | 'right', amount?: number) => void;
+  onSwipe:  (dir: 'left' | 'right', amount?: number) => void;
 }
 
 function ActiveCard({ location, onSwipe }: ActiveCardProps) {
-  const [isFlipped, setIsFlipped]         = useState(false);
-  const [displayAmount, setDisplayAmount] = useState(0);
+  const [isFlipped,         setIsFlipped]         = useState(false);
+  const [selectedPrice,     setSelectedPrice]     = useState(location.items[0].price);
+  const [selectedIsNothing, setSelectedIsNothing] = useState(false);
   const checkInTime = useRef(formatCheckInTime()).current;
+  const { checkInResults } = useAuth();
 
   const translateX   = useSharedValue(0);
   const translateY   = useSharedValue(0);
   const flipProgress = useSharedValue(0);
-  const thumbOffset  = useSharedValue(0);
-  const startOffset  = useSharedValue(0);
+  const scrubStart   = useSharedValue(0);
+  // start centered on item[1] (first real item)
+  const scrubOffset  = useSharedValue(-ITEM_GAP);
 
-  // ── Main swipe gesture (front face only) ──
+  const scrubItems = useMemo(() => buildScrubItems(location), [location]);
+  const ticks      = useMemo(() => buildTicks(scrubItems.length), [scrubItems.length]);
+  const rulerW     = RULER_PAD + (scrubItems.length - 1) * ITEM_GAP + RULER_PAD;
+
+  // ── Stats from history ──
+  const stats = useMemo(() => {
+    const now = new Date();
+    const thisMonth = checkInResults.filter(r => {
+      const d = r.timestamp instanceof Date ? r.timestamp : new Date(r.timestamp);
+      return r.location === location.name && r.visited
+        && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    });
+    const allVisits = checkInResults.filter(
+      r => r.location === location.name && r.visited && r.amount,
+    );
+    const avg = allVisits.length
+      ? allVisits.reduce((s, r) => s + (r.amount || 0), 0) / allVisits.length
+      : 0;
+    return {
+      visits: thisMonth.length,
+      total:  thisMonth.reduce((s, r) => s + (r.amount || 0), 0),
+      avg:    Math.round(avg * 100) / 100,
+    };
+  }, [checkInResults, location.name]);
+
+  // ── Fly helpers ──
+  const flyRight = (amount: number) => {
+    translateX.value = withSpring(
+      SCREEN_WIDTH * 1.6, { velocity: 800 },
+      () => runOnJS(onSwipe)('right', amount),
+    );
+  };
+  const flyLeft = () => {
+    translateX.value = withSpring(
+      -SCREEN_WIDTH * 1.6, { velocity: 800 },
+      () => runOnJS(onSwipe)('left'),
+    );
+  };
+
+  // ── Gestures ──
   const mainGesture = Gesture.Pan()
     .enabled(!isFlipped)
     .onUpdate(e => {
@@ -140,15 +249,13 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
     })
     .onEnd(e => {
       if (e.translationX > SWIPE_THRESHOLD) {
-        // Snap back then flip to spending card
         translateX.value = withSpring(0);
         translateY.value = withSpring(0);
         flipProgress.value = withSpring(1, { damping: 14, stiffness: 120 });
         runOnJS(setIsFlipped)(true);
       } else if (e.translationX < -SWIPE_THRESHOLD) {
         translateX.value = withSpring(
-          -SCREEN_WIDTH * 1.6,
-          { velocity: e.velocityX },
+          -SCREEN_WIDTH * 1.6, { velocity: e.velocityX },
           () => runOnJS(onSwipe)('left'),
         );
       } else {
@@ -157,7 +264,6 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
       }
     });
 
-  // ── Tap to flip back (spending card → front) ──
   const flipBackTap = Gesture.Tap()
     .enabled(isFlipped)
     .onEnd(() => {
@@ -165,7 +271,6 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
       runOnJS(setIsFlipped)(false);
     });
 
-  // ── Left swipe on spending card → skip ──
   const backSwipeGesture = Gesture.Pan()
     .enabled(isFlipped)
     .onUpdate(e => {
@@ -177,8 +282,7 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
     .onEnd(e => {
       if (e.translationX < -SWIPE_THRESHOLD) {
         translateX.value = withSpring(
-          -SCREEN_WIDTH * 1.6,
-          { velocity: e.velocityX },
+          -SCREEN_WIDTH * 1.6, { velocity: e.velocityX },
           () => runOnJS(onSwipe)('left'),
         );
       } else {
@@ -187,51 +291,45 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
       }
     });
 
-  // ── Slider gesture (spending card) ──
-  const sliderGesture = Gesture.Pan()
+  const scrubGesture = Gesture.Pan()
     .enabled(isFlipped)
-    .onBegin(() => { startOffset.value = thumbOffset.value; })
+    .onBegin(() => { scrubStart.value = scrubOffset.value; })
     .onUpdate(e => {
-      const next = Math.max(0, Math.min(SLIDER_TRACK_W, startOffset.value + e.translationX));
-      thumbOffset.value = next;
-      runOnJS(setDisplayAmount)(Math.round((next / SLIDER_TRACK_W) * 100));
+      const maxOff  = 0;
+      const minOff  = -(scrubItems.length - 1) * ITEM_GAP;
+      const raw     = scrubStart.value + e.translationX;
+      // snap to nearest tick mark
+      const snapped = Math.round(raw / TICK_UNIT) * TICK_UNIT;
+      const next    = Math.max(minOff, Math.min(maxOff, snapped));
+      scrubOffset.value = next;
+      const val = computeValueFromOffset(next, scrubItems);
+      runOnJS(setSelectedPrice)(val.price);
+      runOnJS(setSelectedIsNothing)(val.isNothing);
+    })
+    .onEnd(() => {
+      // already on a tick — just confirm displayed value
+      const val = computeValueFromOffset(scrubOffset.value, scrubItems);
+      runOnJS(setSelectedPrice)(val.price);
+      runOnJS(setSelectedIsNothing)(val.isNothing);
     });
 
-  const handleLog = () => {
-    translateX.value = withSpring(
-      SCREEN_WIDTH * 1.6,
-      { velocity: 800 },
-      () => runOnJS(onSwipe)('right', displayAmount),
-    );
-  };
+  const outerGesture = Gesture.Race(mainGesture, backSwipeGesture, flipBackTap);
 
   // ── Animated styles ──
   const wrapperStyle = useAnimatedStyle(() => {
     const rotate = interpolate(
       translateX.value, [-SCREEN_WIDTH, 0, SCREEN_WIDTH], [-10, 0, 10], Extrapolation.CLAMP,
     );
-    return {
-      transform: [
-        { translateX: translateX.value },
-        { translateY: translateY.value },
-        { rotate: `${rotate}deg` },
-      ],
-    };
+    return { transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { rotate: `${rotate}deg` }] };
   });
 
   const frontStyle = useAnimatedStyle(() => ({
-    transform: [
-      { perspective: 1200 },
-      { rotateY: `${interpolate(flipProgress.value, [0, 1], [0, 180])}deg` },
-    ],
+    transform: [{ perspective: 1200 }, { rotateY: `${interpolate(flipProgress.value, [0, 1], [0, 180])}deg` }],
     opacity: interpolate(flipProgress.value, [0.38, 0.5], [1, 0], Extrapolation.CLAMP),
   }));
 
   const backStyle = useAnimatedStyle(() => ({
-    transform: [
-      { perspective: 1200 },
-      { rotateY: `${interpolate(flipProgress.value, [0, 1], [180, 360])}deg` },
-    ],
+    transform: [{ perspective: 1200 }, { rotateY: `${interpolate(flipProgress.value, [0, 1], [180, 360])}deg` }],
     opacity: interpolate(flipProgress.value, [0.5, 0.62], [0, 1], Extrapolation.CLAMP),
   }));
 
@@ -241,12 +339,10 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
   const skippedOpacity = useAnimatedStyle(() => ({
     opacity: interpolate(translateX.value, [-SWIPE_THRESHOLD, 0], [1, 0], Extrapolation.CLAMP),
   }));
-  const thumbStyle = useAnimatedStyle(() => ({ transform: [{ translateX: thumbOffset.value }] }));
-  const fillStyle  = useAnimatedStyle(() => ({ width: thumbOffset.value + THUMB_RADIUS }));
+  const rulerAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: scrubOffset.value }],
+  }));
 
-  const MAP_HEIGHT = CARD_HEIGHT * 0.52;
-
-  const outerGesture = Gesture.Race(mainGesture, backSwipeGesture, flipBackTap);
 
   return (
     <GestureDetector gesture={outerGesture}>
@@ -254,75 +350,148 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
 
         {/* ── Front face ── */}
         <Animated.View style={[styles.cardFace, { backgroundColor: location.accentColor }, frontStyle]}>
-
-          {/* Name row */}
           <View style={styles.nameRow}>
-            <Image source={location.icon} style={styles.activeIcon} contentFit="contain" />
-            <Text style={styles.activeName}>{location.name}</Text>
+            <Image source={location.icon} style={styles.nameIcon} contentFit="contain" />
+            <Text style={styles.nameTxt}>{location.name}</Text>
           </View>
-
-          {/* Time + neighborhood */}
-          <View style={styles.timeRow}>
-            <View style={styles.timePinkBar} />
+          <View style={styles.timeBlock}>
+            <View style={styles.pinkBar} />
             <View>
-              <Text style={styles.timeText}>{checkInTime}</Text>
-              <Text style={styles.neighborhoodText}>{location.neighborhood}</Text>
+              <Text style={styles.timeTxt}>Today @{checkInTime}</Text>
+              <Text style={styles.neighborhoodTxt}>{location.neighborhood}</Text>
             </View>
           </View>
-
-          {/* Map */}
-          <RNImage
-            source={{ uri: staticMapUrl(location.address) }}
-            style={[styles.mapImage, { height: MAP_HEIGHT }]}
-            resizeMode="cover"
-          />
-
-          {/* Swipe stamps */}
+          <View style={styles.mapBox}>
+            <RNImage
+              source={{ uri: staticMapUrl(location.address) }}
+              style={styles.mapImage}
+              resizeMode="cover"
+            />
+          </View>
           <Animated.View style={[styles.visitedOverlay, visitedOpacity]}>
-            <View style={[styles.overlayStamp, { borderColor: DARK_GREEN }]}>
-              <Text style={[styles.overlayStampText, { color: DARK_GREEN }]}>VISITED</Text>
+            <View style={[styles.stamp, { borderColor: DARK_GREEN }]}>
+              <Text style={[styles.stampTxt, { color: DARK_GREEN }]}>VISITED</Text>
             </View>
           </Animated.View>
           <Animated.View style={[styles.skippedOverlay, skippedOpacity]}>
-            <View style={[styles.overlayStamp, { borderColor: '#c0392b' }]}>
-              <Text style={[styles.overlayStampText, { color: '#c0392b' }]}>SKIPPED</Text>
+            <View style={[styles.stamp, { borderColor: '#c0392b' }]}>
+              <Text style={[styles.stampTxt, { color: '#c0392b' }]}>SKIPPED</Text>
             </View>
           </Animated.View>
         </Animated.View>
 
-        {/* ── Back face (spending card) ── */}
-        <Animated.View style={[styles.cardFace, styles.cardBack, backStyle]}>
-          {/* Accent band */}
-          <View style={[styles.backBand, { backgroundColor: location.accentColor }]}>
-            <Image source={location.icon} style={styles.activeIcon} contentFit="contain" />
-            <Text style={styles.activeName}>{location.name}</Text>
+        {/* ── Back face ── */}
+        <Animated.View style={[styles.cardFace, styles.backFace, backStyle]}>
+
+          {/* Header box */}
+          <View style={styles.backHeader}>
+            <View style={styles.nameRow}>
+              <Image source={location.icon} style={styles.nameIcon} contentFit="contain" />
+              <Text style={styles.nameTxt}>{location.name}</Text>
+            </View>
+            <View style={styles.backTimeRow}>
+              <Text style={styles.backTimeTxt}>{checkInTime}</Text>
+              <Text style={styles.backNeighborhoodTxt}>{location.neighborhood}</Text>
+            </View>
           </View>
 
-          {/* Amount */}
-          <View style={styles.amountRow}>
-            <Image source={dollarSignLarge} style={styles.dollarLarge} contentFit="contain" />
-            <Text style={styles.amountText}>{displayAmount}</Text>
-          </View>
-          <Text style={styles.howMuchLabel}>How much did you spend?</Text>
+          {/* Scrubber */}
+          <View style={styles.scrubContainer}>
+            {/* Ruler clips overflow so items outside bounds are hidden */}
+            <View style={styles.scrubClip}>
+              <GestureDetector gesture={scrubGesture}>
+                <Animated.View style={[{ width: rulerW, height: RULER_CLIP_H }, rulerAnimStyle]}>
+                  {/* Tick marks */}
+                  {ticks.map((tick, idx) => (
+                    <View
+                      key={idx}
+                      style={{
+                        position: 'absolute',
+                        left: tick.x,
+                        bottom: RULER_BELOW,
+                        width: 1.5,
+                        height: tick.height,
+                        backgroundColor: TICK_COLOR,
+                      }}
+                    />
+                  ))}
+                  {/* Horizontal baseline */}
+                  <View style={{ position: 'absolute', bottom: RULER_BELOW, left: 0, width: rulerW, height: 1, backgroundColor: TICK_COLOR }} />
+                  {/* Icons above baseline */}
+                  {scrubItems.map((item, i) => {
+                    const cx = RULER_PAD + i * ITEM_GAP;
+                    return (
+                      <View key={i} style={{ position: 'absolute', left: cx - 10, bottom: TICK_TALL + RULER_BELOW + 8, alignItems: 'center', width: 20 }}>
+                        {item.isNothing ? (
+                          <View style={styles.denyCircle}>
+                            <Image source={denyIcon} style={styles.denyIcon} contentFit="contain" />
+                          </View>
+                        ) : (
+                          <Image source={item.icon} style={styles.scrubIcon} contentFit="contain" />
+                        )}
+                      </View>
+                    );
+                  })}
+                  {/* Labels below baseline */}
+                  {scrubItems.map((item, i) => {
+                    const cx = RULER_PAD + i * ITEM_GAP;
+                    return (
+                      <View key={`lbl-${i}`} style={{ position: 'absolute', left: cx - 40, bottom: 0, width: 80, alignItems: 'center' }}>
+                        <Text style={styles.scrubLabel}>{item.label}</Text>
+                      </View>
+                    );
+                  })}
+                </Animated.View>
+              </GestureDetector>
+            </View>
 
-          {/* Slider */}
-          <GestureDetector gesture={sliderGesture}>
-            <View style={styles.sliderWrapper}>
-              <View style={styles.sliderTrack}>
-                <Animated.View style={[styles.sliderFill, fillStyle]} />
-                <Animated.View style={[styles.sliderThumb, thumbStyle]} />
-              </View>
-              <View style={styles.sliderLabels}>
-                <Text style={styles.sliderLabel}>$0</Text>
-                <Text style={styles.sliderLabel}>$100</Text>
+            {/* Price pill — fixed at center, sitting on the baseline */}
+            <View style={styles.pricePillAnchor} pointerEvents="none">
+              <View style={styles.pricePill}>
+                {!selectedIsNothing && (
+                  <Image source={moneySmallIcon} style={styles.pricePillIcon} contentFit="contain" />
+                )}
+                <Text style={[styles.pricePillTxt, selectedIsNothing && { color: GRAY_TEXT }]}>
+                  {selectedIsNothing ? 'skip' : `$${selectedPrice}`}
+                </Text>
               </View>
             </View>
-          </GestureDetector>
+          </View>
 
-          {/* Log button */}
-          <TouchableOpacity style={styles.logBtn} onPress={handleLog} activeOpacity={0.85}>
-            <Text style={styles.logBtnText}>Log ${displayAmount}</Text>
+          {/* Spending pattern */}
+          <View style={styles.statsBox}>
+            <Text style={styles.statsTitle}>YOUR PATTERN HERE</Text>
+            <View style={styles.statsTiles}>
+              <View style={styles.statTile}>
+                <View style={styles.statValRow}>
+                  <Image source={moneySmallIcon} style={styles.statIcon} contentFit="contain" />
+                  <Text style={styles.statAmt}>{stats.avg.toFixed(2)}</Text>
+                </View>
+                <Text style={styles.statLabel}>avg spend</Text>
+              </View>
+              <View style={styles.statTile}>
+                <View style={styles.statValRow}>
+                  <Text style={styles.statCount}>×{stats.visits}</Text>
+                </View>
+                <Text style={styles.statLabel}>this month</Text>
+              </View>
+              <View style={styles.statTile}>
+                <View style={styles.statValRow}>
+                  <Image source={moneySmallIcon} style={styles.statIcon} contentFit="contain" />
+                  <Text style={styles.statAmt}>{stats.total}</Text>
+                </View>
+                <Text style={styles.statLabel}>this month</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* LOG button */}
+          <TouchableOpacity style={styles.logBtn} onPress={() => {
+            if (selectedIsNothing) flyLeft(); else flyRight(selectedPrice);
+          }} activeOpacity={0.75}>
+            <Text style={styles.logBtnTxt}>{selectedIsNothing ? 'SKIP' : 'LOG'}</Text>
           </TouchableOpacity>
+
         </Animated.View>
 
       </Animated.View>
@@ -332,21 +501,21 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
 interface CheckInModalProps {
-  visible:  boolean;
-  onClose:  () => void;
+  visible: boolean;
+  onClose: () => void;
 }
 
 export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
   const { addCheckInResult } = useAuth();
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const handleSwipe = (direction: 'left' | 'right', amount?: number) => {
+  const handleSwipe = (dir: 'left' | 'right', amount?: number) => {
     const location = LOCATIONS[currentIndex];
     addCheckInResult({
       location:  location.name,
       category:  location.category,
-      visited:   direction === 'right',
-      amount:    direction === 'right' ? (amount ?? 0) : undefined,
+      visited:   dir === 'right',
+      amount:    dir === 'right' ? (amount ?? 0) : undefined,
       timestamp: new Date(),
     });
     const next = currentIndex + 1;
@@ -359,57 +528,43 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
 
   const remaining = LOCATIONS.slice(currentIndex);
   const active    = remaining[0];
-  // upcoming cards shown collapsed above the active one, back-to-front order
   const collapsed = remaining.slice(1);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
 
-        {/* ── Header ── */}
         <View style={styles.header}>
           <Image source={clipboardIcon} style={styles.headerIcon} contentFit="contain" />
           <Text style={styles.headerTitle}>Check In</Text>
           <View style={styles.streakPill}>
             <Image source={flameIcon} style={styles.flameIcon} contentFit="contain" />
-            <Text style={styles.streakText}>3</Text>
+            <Text style={styles.streakTxt}>3</Text>
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={12}>
-            <Text style={styles.closeBtnText}>✕</Text>
+            <Text style={styles.closeBtnTxt}>✕</Text>
           </TouchableOpacity>
         </View>
 
         <Text style={styles.subtitle}>Swipe right if you visited, left if not</Text>
 
-        {/* ── Stack ── */}
         {remaining.length > 0 ? (
           <View style={[styles.stackContainer, { height: CARD_HEIGHT + collapsed.length * HEADER_H }]}>
-            {/* Back cards — peeking from the top, showing icon + name header */}
             {[...collapsed].reverse().map((loc, i) => {
-              const distFromFront = collapsed.length - 1 - i; // 0 = closest to active
-              const topPos  = i * HEADER_H;
-              const bgColor = distFromFront === 2 ? '#302C6E' : distFromFront === 1 ? '#FFFFFF' : '#CCCCCC';
-              const txtColor = distFromFront === 2 ? '#FFFFFF' : '#1e1d19';
+              const distFromFront = collapsed.length - 1 - i;
+              const bgColor  = distFromFront === 2 ? PINK_BG  : distFromFront === 1 ? '#FFFFFF' : '#EBEBEB';
               return (
                 <View
                   key={loc.id}
-                  style={[
-                    styles.backCard,
-                    {
-                      top: topPos,
-                      backgroundColor: bgColor,
-                      zIndex: 9 - distFromFront,
-                    },
-                  ]}
+                  style={[styles.backCard, { top: i * HEADER_H, backgroundColor: bgColor, zIndex: 9 - distFromFront }]}
                 >
-                  <View style={styles.nameRow}>
-                    <Image source={loc.icon} style={styles.activeIcon} contentFit="contain" />
-                    <Text style={[styles.activeName, { color: txtColor }]}>{loc.name}</Text>
+                  <View style={styles.peekRow}>
+                    <Image source={loc.icon} style={styles.peekIcon} contentFit="contain" />
+                    <Text style={styles.peekName}>{loc.name}</Text>
                   </View>
                 </View>
               );
             })}
-            {/* Active (front) card — below all peek headers */}
             <View style={[styles.activeCardSlot, { top: collapsed.length * HEADER_H }]}>
               <ActiveCard key={active.id} location={active} onSwipe={handleSwipe} />
             </View>
@@ -417,18 +572,17 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
         ) : (
           <View style={styles.doneCard}>
             <Text style={styles.doneTitle}>All done!</Text>
-            <Text style={styles.doneSubtitle}>Check-in saved.</Text>
+            <Text style={styles.doneSub}>Check-in saved.</Text>
           </View>
         )}
 
-        {/* ── Progress dots ── */}
         <View style={styles.dots}>
           {LOCATIONS.map((_, i) => (
             <View
               key={i}
               style={[
                 styles.dot,
-                i < currentIndex  && styles.dotDone,
+                i < currentIndex   && styles.dotDone,
                 i === currentIndex && styles.dotActive,
               ]}
             />
@@ -443,246 +597,191 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
 // ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   overlay: {
-    flex: 1,
-    backgroundColor: OVERLAY_BG,
-    alignItems: 'center',
-    paddingTop: 64,
-    paddingBottom: 40,
+    flex: 1, backgroundColor: OVERLAY_BG,
+    alignItems: 'center', paddingTop: 64, paddingBottom: 40,
   },
 
-  // ── Header ──
+  // ── Modal header ──
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    width: CARD_WIDTH,
-    marginBottom: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    width: CARD_WIDTH, marginBottom: 6,
   },
-  headerIcon: { width: 18, height: 22 },
-  headerTitle: {
-    flex: 1,
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-  },
+  headerIcon:  { width: 18, height: 22 },
+  headerTitle: { flex: 1, fontSize: 20, fontWeight: '700', color: '#fff' },
   streakPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: DARK_GREEN,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: DARK_GREEN, borderRadius: 20,
+    paddingHorizontal: 10, paddingVertical: 4,
   },
   flameIcon: { width: 9, height: 11 },
-  streakText: { fontSize: 12, color: LIME_GREEN, fontWeight: '600' },
+  streakTxt: { fontSize: 12, color: LIME_GREEN, fontWeight: '600' },
   closeBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 30, height: 30, borderRadius: 15,
     backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
-  closeBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  subtitle: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
-    marginBottom: 20,
-  },
+  closeBtnTxt: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  subtitle: { fontSize: 12, color: 'rgba(255,255,255,0.7)', marginBottom: 20 },
 
-  // ── Card stack container ──
-  stackContainer: {
-    width: CARD_WIDTH,
-    position: 'relative',
-  },
-
-  // ── Back cards (peeking from top) ──
+  // ── Stack ──
+  stackContainer: { width: CARD_WIDTH, position: 'relative' },
   backCard: {
-    position: 'absolute',
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
-    borderRadius: CARD_RADIUS,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOpacity: 0.10,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    position: 'absolute', width: CARD_WIDTH, height: CARD_HEIGHT,
+    borderRadius: CARD_RADIUS, overflow: 'hidden',
+    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 }, elevation: 4,
   },
+  activeCardSlot: { position: 'absolute', width: CARD_WIDTH, zIndex: 10 },
 
-  // ── Front card slot ──
-  activeCardSlot: {
-    position: 'absolute',
-    width: CARD_WIDTH,
-    zIndex: 10,
+  // ── Peek row inside stacked back cards ──
+  peekRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 20, paddingTop: 20, gap: 10,
   },
+  peekIcon: { width: 20, height: 20 },
+  peekName: { fontSize: 16, fontWeight: '600', color: DARK_RED },
 
-  // ── Active card wrapper (holds both faces) ──
+  // ── Card wrapper (holds both faces) ──
   cardWrapper: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 10,
+    width: CARD_WIDTH, height: CARD_HEIGHT,
+    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 }, elevation: 10,
   },
   cardFace: {
-    position: 'absolute',
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
-    borderRadius: CARD_RADIUS,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    position: 'absolute', width: CARD_WIDTH, height: CARD_HEIGHT,
+    borderRadius: CARD_RADIUS, overflow: 'hidden',
+    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16,
   },
 
-  // ── Front face layout ──
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 10,
-  },
-  activeIcon: { width: 22, height: 22 },
-  activeName: { fontSize: 15, fontWeight: '700', color: '#1e1d19' },
+  // ── Shared name row ──
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  nameIcon: { width: 20, height: 20 },
+  nameTxt:  { fontSize: 16, fontWeight: '600', color: DARK_RED },
 
-  timeRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    paddingHorizontal: 18,
-    marginBottom: 12,
+  // ── Front face ──
+  timeBlock: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    marginTop: 14, marginBottom: 12,
+    backgroundColor: '#fff', borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 10,
   },
-  timePinkBar: {
-    width: 3,
-    borderRadius: 2,
-    backgroundColor: '#FFB5DB',
-    alignSelf: 'stretch',
-  },
-  timeText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1e1d19',
-  },
-  neighborhoodText: {
-    fontSize: 11,
-    color: '#999',
-    marginTop: 2,
-  },
-
-  mapImage: {
-    width: CARD_WIDTH,
-  },
-
-  // Swipe stamps
+  pinkBar: { width: 3, borderRadius: 2, backgroundColor: PINK_BAR, alignSelf: 'stretch' },
+  timeTxt:         { fontSize: 10, fontWeight: '500', color: DARK_RED },
+  neighborhoodTxt: { fontSize: 10, color: GRAY_TEXT, marginTop: 4 },
+  mapBox:   { flex: 1, backgroundColor: '#fff', borderRadius: 10, overflow: 'hidden' },
+  mapImage: { flex: 1, width: '100%', height: undefined },
   visitedOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10,84,47,0.10)',
-    alignItems: 'flex-start',
-    justifyContent: 'flex-start',
-    padding: 18,
+    ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(10,84,47,0.10)',
+    alignItems: 'flex-start', justifyContent: 'flex-start', padding: 18,
   },
   skippedOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(192,57,43,0.08)',
-    alignItems: 'flex-end',
-    justifyContent: 'flex-start',
-    padding: 18,
+    ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(192,57,43,0.08)',
+    alignItems: 'flex-end', justifyContent: 'flex-start', padding: 18,
   },
-  overlayStamp: {
-    borderWidth: 3,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+  stamp: {
+    borderWidth: 3, borderRadius: 6,
+    paddingHorizontal: 10, paddingVertical: 4,
     transform: [{ rotate: '-15deg' }],
   },
-  overlayStampText: { fontSize: 18, fontWeight: '900', letterSpacing: 2 },
+  stampTxt: { fontSize: 18, fontWeight: '900', letterSpacing: 2 },
 
-  // ── Back face (spending card) ──
-  cardBack: {
+  // ── Back face ──
+  backFace: { backgroundColor: '#fff', gap: 12 },
+
+  backHeader: {
     backgroundColor: '#fff',
-    justifyContent: 'flex-start',
-  },
-  backBand: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-  },
-  amountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-    gap: 4,
-  },
-  dollarLarge: { width: 24, height: 32 },
-  amountText: { fontSize: 52, fontWeight: '800', color: DARK_GREEN, lineHeight: 60 },
-  howMuchLabel: { fontSize: 11, color: '#888', textAlign: 'center', marginTop: 2 },
-  sliderWrapper: { paddingHorizontal: 24, marginTop: 16 },
-  sliderTrack: {
-    height: 6,
-    backgroundColor: '#e8e8e8',
-    borderRadius: 3,
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  sliderFill: {
-    position: 'absolute',
-    left: 0,
-    height: 6,
-    backgroundColor: DARK_GREEN,
-    borderRadius: 3,
-  },
-  sliderThumb: {
-    position: 'absolute',
-    left: -THUMB_RADIUS,
-    top: -(THUMB_RADIUS - 3),
-    width: THUMB_RADIUS * 2,
-    height: THUMB_RADIUS * 2,
-    borderRadius: THUMB_RADIUS,
-    backgroundColor: '#fff',
-    borderWidth: 2.5,
-    borderColor: DARK_GREEN,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    gap: 6,
     shadowColor: '#000',
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.04,
     shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
-  sliderLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
-  sliderLabel: { fontSize: 10, color: '#aaa', fontWeight: '500' },
+  backTimeRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+  backTimeTxt:         { fontSize: 10, fontWeight: '500', color: GRAY_TEXT },
+  backNeighborhoodTxt: { fontSize: 10, color: GRAY_TEXT },
+
+  // ── Scrubber ──
+  scrubContainer: {
+    position: 'relative',
+  },
+  scrubClip: {
+    height: RULER_CLIP_H,
+    overflow: 'hidden',
+  },
+
+  scrubIcon:  { width: 20, height: 20 },
+  scrubLabel: { fontSize: 9, color: GRAY_TEXT, textAlign: 'center' },
+
+  // Price pill — fixed overlay at center of scrubber, sitting on the baseline
+  pricePillAnchor: {
+    position: 'absolute',
+    left: 0, right: 0,
+    top: RULER_CLIP_H - RULER_BELOW - 13, // center pill (≈26px tall) on baseline
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  pricePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#fff',
+    borderRadius: 30,
+    paddingHorizontal: 10, paddingVertical: 6,
+    shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 }, elevation: 4,
+  },
+  pricePillIcon: { width: 13, height: 13 },
+  pricePillTxt:  { fontSize: 14, fontWeight: '600', color: PRICE_COLOR },
+
+  denyCircle: {
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: '#FFB5DB',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  denyIcon: { width: 8, height: 8 },
+
+  // ── Stats ──
+  statsBox: {
+    borderWidth: 1, borderColor: LIGHT_GRAY,
+    borderRadius: 10, padding: 10, gap: 8,
+  },
+  statsTitle: {
+    fontSize: 9, color: GRAY_TEXT, letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  statsTiles: { flexDirection: 'row', gap: 8 },
+  statTile: {
+    flex: 1, backgroundColor: PINK_BG,
+    borderRadius: 10, padding: 8, gap: 4,
+    justifyContent: 'flex-end',
+  },
+  statValRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  statIcon:  { width: 13, height: 13 },
+  statAmt:   { fontSize: 14, fontWeight: '600', color: PRICE_COLOR },
+  statCount: { fontSize: 14, fontWeight: '600', color: DARK_RED },
+  statLabel: { fontSize: 9, color: DARK_RED },
+
+  // ── LOG button ──
   logBtn: {
-    marginHorizontal: 24,
-    marginTop: 16,
-    backgroundColor: LIME_GREEN,
-    borderRadius: 14,
-    paddingVertical: 13,
+    borderWidth: 1, borderColor: DARK_RED,
+    borderRadius: 20, paddingVertical: 6,
     alignItems: 'center',
   },
-  logBtnText: { fontSize: 14, fontWeight: '700', color: DARK_GREEN },
+  logBtnTxt: { fontSize: 16, fontWeight: '600', color: DARK_RED },
 
   // ── Progress dots ──
-  dots: { flexDirection: 'row', gap: 8, marginTop: 20 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.3)' },
+  dots:      { flexDirection: 'row', gap: 8, marginTop: 20 },
+  dot:       { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.3)' },
   dotActive: { backgroundColor: '#fff', width: 22, borderRadius: 4 },
   dotDone:   { backgroundColor: LIME_GREEN },
 
   // ── Done card ──
   doneCard: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
-    borderRadius: CARD_RADIUS,
-    backgroundColor: '#d2f3e2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
+    width: CARD_WIDTH, height: CARD_HEIGHT, borderRadius: CARD_RADIUS,
+    backgroundColor: '#d2f3e2', alignItems: 'center', justifyContent: 'center', gap: 8,
   },
-  doneTitle:    { fontSize: 28, fontWeight: '700', color: DARK_GREEN },
-  doneSubtitle: { fontSize: 14, color: DARK_GREEN, opacity: 0.7 },
+  doneTitle: { fontSize: 28, fontWeight: '700', color: DARK_GREEN },
+  doneSub:   { fontSize: 14, color: DARK_GREEN, opacity: 0.7 },
 });
