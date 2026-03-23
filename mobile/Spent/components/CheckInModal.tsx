@@ -42,13 +42,9 @@ const LIME_GREEN   = '#cdf545';
 const OVERLAY_BG   = 'rgba(131,135,117,0.92)';
 const CARD_WIDTH   = SCREEN_WIDTH * 0.88;
 const CARD_HEIGHT  = SCREEN_HEIGHT * 0.44;
-const COLLAPSED_H  = 52;
 const CARD_RADIUS  = 20;
+const HEADER_H     = 62; // height of each back card's peeking header row
 // ─────────────────────────────────────────────────────────────────────────────
-
-// Collapsed card colors: index 0 = closest to front (lightest), 2 = furthest back (darkest)
-const COLLAPSED_BG   = ['#D8D8D8', '#FFFFFF', '#302C6E'];
-const COLLAPSED_TEXT = ['#1e1d19', '#1e1d19', '#FFFFFF'];
 
 interface Location {
   id:           number;
@@ -117,16 +113,6 @@ function staticMapUrl(address: string): string {
   );
 }
 
-// ── Collapsed card ─────────────────────────────────────────────────────────────
-function CollapsedCard({ location, distFromFront }: { location: Location; distFromFront: number }) {
-  const idx = Math.min(distFromFront, 2);
-  return (
-    <View style={[styles.collapsedCard, { backgroundColor: COLLAPSED_BG[idx] }]}>
-      <Image source={location.icon} style={styles.collapsedIcon} contentFit="contain" />
-      <Text style={[styles.collapsedName, { color: COLLAPSED_TEXT[idx] }]}>{location.name}</Text>
-    </View>
-  );
-}
 
 // ── Active (expanded) card ─────────────────────────────────────────────────────
 interface ActiveCardProps {
@@ -145,7 +131,7 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
   const thumbOffset  = useSharedValue(0);
   const startOffset  = useSharedValue(0);
 
-  // ── Main swipe gesture ──
+  // ── Main swipe gesture (front face only) ──
   const mainGesture = Gesture.Pan()
     .enabled(!isFlipped)
     .onUpdate(e => {
@@ -160,7 +146,36 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
         flipProgress.value = withSpring(1, { damping: 14, stiffness: 120 });
         runOnJS(setIsFlipped)(true);
       } else if (e.translationX < -SWIPE_THRESHOLD) {
-        // Fly off left → skipped
+        translateX.value = withSpring(
+          -SCREEN_WIDTH * 1.6,
+          { velocity: e.velocityX },
+          () => runOnJS(onSwipe)('left'),
+        );
+      } else {
+        translateX.value = withSpring(0);
+        translateY.value = withSpring(0);
+      }
+    });
+
+  // ── Tap to flip back (spending card → front) ──
+  const flipBackTap = Gesture.Tap()
+    .enabled(isFlipped)
+    .onEnd(() => {
+      flipProgress.value = withSpring(0, { damping: 14, stiffness: 120 });
+      runOnJS(setIsFlipped)(false);
+    });
+
+  // ── Left swipe on spending card → skip ──
+  const backSwipeGesture = Gesture.Pan()
+    .enabled(isFlipped)
+    .onUpdate(e => {
+      if (e.translationX < 0) {
+        translateX.value = e.translationX;
+        translateY.value = e.translationY * 0.1;
+      }
+    })
+    .onEnd(e => {
+      if (e.translationX < -SWIPE_THRESHOLD) {
         translateX.value = withSpring(
           -SCREEN_WIDTH * 1.6,
           { velocity: e.velocityX },
@@ -231,8 +246,10 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
 
   const MAP_HEIGHT = CARD_HEIGHT * 0.52;
 
+  const outerGesture = Gesture.Race(mainGesture, backSwipeGesture, flipBackTap);
+
   return (
-    <GestureDetector gesture={mainGesture}>
+    <GestureDetector gesture={outerGesture}>
       <Animated.View style={[styles.cardWrapper, wrapperStyle]}>
 
         {/* ── Front face ── */}
@@ -277,7 +294,7 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
         <Animated.View style={[styles.cardFace, styles.cardBack, backStyle]}>
           {/* Accent band */}
           <View style={[styles.backBand, { backgroundColor: location.accentColor }]}>
-            <Image source={location.icon} style={styles.collapsedIcon} contentFit="contain" />
+            <Image source={location.icon} style={styles.activeIcon} contentFit="contain" />
             <Text style={styles.activeName}>{location.name}</Text>
           </View>
 
@@ -366,17 +383,36 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
 
         {/* ── Stack ── */}
         {remaining.length > 0 ? (
-          <View style={styles.stackContainer}>
-            {/* Collapsed upcoming cards — rendered back-to-front (top of screen = furthest back) */}
-            {[...collapsed].reverse().map((loc, i) => (
-              <CollapsedCard
-                key={loc.id}
-                location={loc}
-                distFromFront={collapsed.length - 1 - i}
-              />
-            ))}
-            {/* Active expanded card */}
-            <ActiveCard key={active.id} location={active} onSwipe={handleSwipe} />
+          <View style={[styles.stackContainer, { height: CARD_HEIGHT + collapsed.length * HEADER_H }]}>
+            {/* Back cards — peeking from the top, showing icon + name header */}
+            {[...collapsed].reverse().map((loc, i) => {
+              const distFromFront = collapsed.length - 1 - i; // 0 = closest to active
+              const topPos  = i * HEADER_H;
+              const bgColor = distFromFront === 2 ? '#302C6E' : distFromFront === 1 ? '#FFFFFF' : '#CCCCCC';
+              const txtColor = distFromFront === 2 ? '#FFFFFF' : '#1e1d19';
+              return (
+                <View
+                  key={loc.id}
+                  style={[
+                    styles.backCard,
+                    {
+                      top: topPos,
+                      backgroundColor: bgColor,
+                      zIndex: 9 - distFromFront,
+                    },
+                  ]}
+                >
+                  <View style={styles.nameRow}>
+                    <Image source={loc.icon} style={styles.activeIcon} contentFit="contain" />
+                    <Text style={[styles.activeName, { color: txtColor }]}>{loc.name}</Text>
+                  </View>
+                </View>
+              );
+            })}
+            {/* Active (front) card — below all peek headers */}
+            <View style={[styles.activeCardSlot, { top: collapsed.length * HEADER_H }]}>
+              <ActiveCard key={active.id} location={active} onSwipe={handleSwipe} />
+            </View>
           </View>
         ) : (
           <View style={styles.doneCard}>
@@ -458,26 +494,29 @@ const styles = StyleSheet.create({
   // ── Card stack container ──
   stackContainer: {
     width: CARD_WIDTH,
-    gap: 6,
+    position: 'relative',
   },
 
-  // ── Collapsed cards ──
-  collapsedCard: {
+  // ── Back cards (peeking from top) ──
+  backCard: {
+    position: 'absolute',
     width: CARD_WIDTH,
-    height: COLLAPSED_H,
+    height: CARD_HEIGHT,
     borderRadius: CARD_RADIUS,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 18,
-    gap: 12,
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
-  collapsedIcon: { width: 22, height: 22 },
-  collapsedName: { fontSize: 14, fontWeight: '700' },
+
+  // ── Front card slot ──
+  activeCardSlot: {
+    position: 'absolute',
+    width: CARD_WIDTH,
+    zIndex: 10,
+  },
 
   // ── Active card wrapper (holds both faces) ──
   cardWrapper: {
