@@ -37,7 +37,7 @@ export default function SignUp() {
       console.log("Google access token:", accessToken); // <-- Print the token
       if (accessToken) {
         setToken(accessToken);
-        router.replace({ pathname: '/(tabs)/home', params: { checkIn: '1' } });
+        router.replace({ pathname: '/(tabs)/home', params: { checkIn: Date.now().toString() } });
       } else {
         console.warn("Authentication object is missing accessToken.");
       }

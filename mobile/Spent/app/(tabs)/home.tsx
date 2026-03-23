@@ -95,8 +95,8 @@ export default function HomeScreen() {
   const panStartOffset = useRef(0);
 
   useEffect(() => {
-    if (checkIn === '1') setCheckInVisible(true);
-  }, []);
+    if (checkIn) setCheckInVisible(true);
+  }, [checkIn]);
   const [eventCounts, setEventCounts] = useState<{ [key: string]: number }>({});
   // Track which "YYYY-M" months have already been fetched so we don't re-request
   const [fetchedMonths, setFetchedMonths] = useState<Set<string>>(new Set());
