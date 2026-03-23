@@ -9,15 +9,19 @@ import { useAuth } from "../../context/AuthContext";
 
 WebBrowser.maybeCompleteAuthSession();
 
-const isExpoGo = Constants.appOwnership === "expo";
+// appOwnership was deprecated in SDK 49+; executionEnvironment is the modern check
+const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
 export default function SignUp() {
   const router = useRouter();
   const { setToken } = useAuth();
   const [signingIn, setSigningIn] = useState(false);
 
+  // In Expo Go we can't use a custom URI scheme, so we use the stable Expo auth
+  // proxy (https://auth.expo.io/@clchen5/spent-actual) which must be registered
+  // as an authorized redirect URI in Google Cloud Console for the web client.
   const redirectUri = isExpoGo
-    ? AuthSession.makeRedirectUri({}) // Defaults to Expo Go proxy URI
+    ? AuthSession.makeRedirectUri({ useProxy: true })
     : AuthSession.makeRedirectUri({
         native: "com.googleusercontent.apps.820527515652-3ap73pd55flp82elvtsbpct1rjk23n3o:/oauthredirect",
       });
