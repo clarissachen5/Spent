@@ -1,131 +1,131 @@
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import Slider from "@react-native-community/slider";
+
 
 export default function Dashboard() {
-  const { token, amount, category } = useLocalSearchParams();
+const { token, amount, category } = useLocalSearchParams();
 
-  const [eventCounts, setEventCounts] = useState<{ [key: string]: number }>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+const [eventCounts, setEventCounts] = useState<{ [key: string]: number }>({});
+const [loading, setLoading] = useState(true);
 
-  const year = 2026;
-  const month = 2; // March
-  const today = new Date(year, month, 1);
+const today = new Date();
+const year = today.getFullYear();
+const month = today.getMonth(); // 0 indexed
 
-  const firstDayOfMonth = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+const firstDayOfMonth = new Date(year, month, 1).getDay();
+const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-  const [spending, setSpending] = useState({
+const [spending, setSpending] = useState({
     Fun: 12,
     Groceries: 30,
     Uber: 18,
     Dining: 27,
-  });
+});
 
-  // total automatically updates whenever spending changes
-  const totalSpent = Object.values(spending).reduce((sum, val) => sum + val, 0);
+const totalSpent =
+    spending.Fun +
+    spending.Groceries +
+    spending.Uber +
+    spending.Dining;
 
-  // update spending from check-in page
-  useEffect(() => {
+
+// Add new spend from check-in
+useEffect(() => {
     if (amount && category) {
-      const numericAmount = Number(amount);
+        const numericAmount = Number(amount);
 
-      if (!isNaN(numericAmount)) {
         setSpending((prev) => ({
-          ...prev,
-          [category as string]:
+        ...prev,
+        [category as string]:
             (prev[category as keyof typeof prev] || 0) + numericAmount,
         }));
 
+        // ALSO increase today’s event count
         const todayStr = today.toISOString().split("T")[0];
 
         setEventCounts((prev) => ({
-          ...prev,
-          [todayStr]: (prev[todayStr] || 0) + 1,
+        ...prev,
+        [todayStr]: (prev[todayStr] || 0) + 1,
         }));
-      }
     }
-  }, [amount, category]);
+}, [amount, category]);
 
-  // fetch Google calendar events
-  useEffect(() => {
-    if (!token) {
-      setError("No Google token provided. Please sign in again.");
-      setLoading(false);
-      return;
-    }
+// Fetch Google events
+useEffect(() => {
+    if (!token) return;
 
     const fetchEvents = async () => {
-      try {
-        const monthStart = new Date(year, month, 1);
-        const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
+    try {
+        const now = new Date();
+        const nextMonth = new Date();
+        nextMonth.setMonth(now.getMonth() + 1);
 
         const response = await fetch(
-          `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${monthStart.toISOString()}&timeMax=${monthEnd.toISOString()}&singleEvents=true&orderBy=startTime`,
-          {
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${now.toISOString()}&timeMax=${nextMonth.toISOString()}&singleEvents=true&orderBy=startTime`,
+        {
             headers: {
-              Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${token}`,
             },
-          }
+        }
         );
 
         const data = await response.json();
 
-        if (!response.ok) {
-          throw new Error("Failed to fetch events. Invalid or expired token.");
-        }
-
         const counts: { [key: string]: number } = {};
 
         (data.items || []).forEach((event: any) => {
-          let dateStr = "";
+        const date =
+            event.start?.dateTime?.split("T")[0] ||
+            event.start?.date;
 
-          if (event.start?.date) {
-            dateStr = event.start.date;
-          } else if (event.start?.dateTime) {
-            dateStr = event.start.dateTime.split("T")[0];
-          }
+        if (!date) return;
 
-          if (dateStr) {
-            counts[dateStr] = (counts[dateStr] || 0) + 1;
-          }
+        counts[date] = (counts[date] || 0) + 1;
         });
 
         setEventCounts(counts);
         setLoading(false);
-      } catch (err: any) {
-        setError(err.message || "Error fetching events.");
+    } catch (err) {
+        console.log("Error fetching events:", err);
         setLoading(false);
-      }
+    }
     };
 
     fetchEvents();
-  }, [token]);
+}, [token]);
 
-  const buildCalendar = () => {
+// Build calendar grid
+const buildCalendar = () => {
     const daysArray = [];
 
+    // Empty spaces before first day
     for (let i = 0; i < firstDayOfMonth; i++) {
-      daysArray.push(null);
+    daysArray.push(null);
     }
 
     for (let day = 1; day <= daysInMonth; day++) {
-      daysArray.push(day);
+    daysArray.push(day);
     }
 
     const rows = [];
     for (let i = 0; i < daysArray.length; i += 7) {
-      rows.push(daysArray.slice(i, i + 7));
+    rows.push(daysArray.slice(i, i + 7));
     }
 
     return rows;
-  };
+};
 
-  const calendarRows = buildCalendar();
+const calendarRows = buildCalendar();
+
+const getColor = (count: number) => {
+    if (!count) return "#ffffff";
+
+    const intensity = Math.min(count * 60, 255);
+    return `rgb(${intensity}, 0, 0)`;
+};
 
   const getColor = (count: number) => {
     if (!count) return "#ffffff";
@@ -136,93 +136,93 @@ export default function Dashboard() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.topSection}>
+
+    {/* TOP — Summary */}
+        <View style={styles.topSection}>
         <Text style={styles.balanceLabel}>Total This Month</Text>
         <Text style={styles.balanceAmount}>${totalSpent}</Text>
 
         <View style={styles.checkInButtonContainer}>
-          <Text
+            <Text
             style={styles.checkInButton}
-            onPress={() =>
-              router.push({
-                pathname: "/checkin",
-                params: { token },
-              })
-            }
-          >
+            onPress={() => router.push("/checkin")}
+            >
             Check In
-          </Text>
+            </Text>
         </View>
-      </View>
+        </View>
 
-      <View style={styles.middleSection}>
+    {/* MIDDLE — Spending Categories */}
+    <View style={styles.middleSection}>
         <Text style={styles.sectionTitle}>Spending Categories</Text>
 
-        {Object.entries(spending).map(([category, value]) => {
-          const colors: Record<string, string> = {
-            Fun: "#FDE68A",
-            Groceries: "#BBF7D0",
-            Uber: "#BFDBFE",
-            Dining: "#FBCFE8",
-          };
-
-          return (
-            <View
-              key={category}
-              style={[
-                styles.categoryCard,
-                { backgroundColor: colors[category] || "#eee" },
-              ]}
-            >
-              <View style={styles.categoryHeader}>
-                <Text style={styles.categoryName}>{category}</Text>
-                <Text style={styles.categoryAmount}>${value}</Text>
-              </View>
-
-              <Slider
-                minimumValue={0}
-                maximumValue={100}
-                value={value}
-                disabled={true}
-              />
-            </View>
-          );
-        })}
-      </View>
-
-      <View style={styles.bottomSection}>
-        {loading && <Text>Loading events...</Text>}
-        {error && <Text style={{ color: "red" }}>{error}</Text>}
-
-        <View style={styles.weekHeader}>
-          {weekDays.map((day) => (
-            <Text key={day} style={styles.day}>
-              {day}
-            </Text>
-          ))}
+        <View style={styles.categoryRow}>
+        <Text>☕ Fun</Text>
+        <Text>${spending.Fun}</Text>
         </View>
 
-        {calendarRows.map((row, i) => (
-          <View key={i} style={styles.dateRow}>
-            {row.map((day, j) => {
-              if (!day) return <View key={j} style={styles.dateBox} />;
+        <View style={styles.categoryRow}>
+        <Text>${spending.Groceries}</Text>
+        <Text>$30</Text>
+        </View>
 
-              const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-              const count = eventCounts[dateStr] || 0;
+        <View style={styles.categoryRow}>
+        <Text>${spending.Uber}</Text>
+        <Text>$18</Text>
+        </View>
 
-              return (
+        <View style={styles.categoryRow}>
+        <Text>🍽 Dining</Text>
+        <Text>${spending.Dining}</Text>
+        </View>
+
+        <View style={styles.predictionBox}>
+        <Text style={styles.predictionText}>
+            Predicted Month End: ${totalSpent}
+        </Text>
+        </View>
+    </View>
+
+    {/* BOTTOM — Google Calendar Heatmap */}
+    <View style={styles.bottomSection}>
+        <ScrollView>
+        <Text style={styles.sectionTitle}>
+            {today.toLocaleString("default", { month: "long" })} {year}
+        </Text>
+
+        <View style={styles.weekHeader}>
+            {weekDays.map((day) => (
+            <Text style={styles.day} key={day}>
+                {day}
+            </Text>
+            ))}
+        </View>
+
+        {calendarRows.map((week, i) => (
+            <View style={styles.dateRow} key={i}>
+            {week.map((day, index) => {
+                if (!day)
+                return <View style={styles.dateBox} key={index} />;
+
+                const formattedDate = `${year}-${String(
+                month + 1
+                ).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+                const count = eventCounts[formattedDate];
+
+                return (
                 <View
-                  key={j}
-                  style={[
+                    key={index}
+                    style={[
                     styles.dateBox,
                     { backgroundColor: getColor(count) },
-                  ]}
+                    ]}
                 >
-                  <Text>{day}</Text>
+                    <Text>{day}</Text>
                 </View>
-              );
+                );
             })}
-          </View>
+            </View>
         ))}
       </View>
     </View>
@@ -230,97 +230,94 @@ export default function Dashboard() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+    container: { flex: 1 },
 
-  topSection: {
-    flex: 1,
-    backgroundColor: "#C7F36B",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+    /* TOP */
+    topSection: {
+        flex: 1,
+        backgroundColor: "#C7F36B",
+        justifyContent: "center",
+        alignItems: "center",
+    },
 
-  checkInButtonContainer: {
-    position: "absolute",
-    bottom: 20,
-    right: 20,
-  },
+    checkInButtonContainer: {
+        position: "absolute",
+        bottom: -20,
+        right: 20,
+        },
 
-  checkInButton: {
-    backgroundColor: "#f9ebcc",
-    color: "#C7F36B",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    fontWeight: "600",
-    overflow: "hidden",
-  },
+        checkInButton: {
+        backgroundColor: "black",
+        color: "white",
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 20,
+        fontWeight: "600",
+    },
 
-  balanceLabel: { fontSize: 18, color: "#333" },
-  balanceAmount: { fontSize: 36, fontWeight: "bold", marginTop: 8 },
+    balanceLabel: { fontSize: 18, color: "#333" },
+    balanceAmount: { fontSize: 36, fontWeight: "bold", marginTop: 8 },
 
-  middleSection: {
-    flex: 1.5,
-    padding: 20,
-    backgroundColor: "white",
-  },
+    /* MIDDLE */
+    middleSection: {
+        flex: 1.5,
+        padding: 20,
+        backgroundColor: "white",
+    },
 
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 10,
-  },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: "600",
+        marginBottom: 10,
+    },
 
-  categoryCard: {
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 14,
-  },
+    categoryRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        paddingVertical: 6,
+    },
 
-  categoryHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
+    predictionBox: {
+        marginTop: 15,
+        padding: 10,
+        backgroundColor: "#f1f1f1",
+        borderRadius: 8,
+    },
 
-  categoryName: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
+    predictionText: {
+        fontWeight: "600",
+    },
 
-  categoryAmount: {
-    fontSize: 16,
-    fontWeight: "700",
-  },
+    /* BOTTOM — Calendar */
+    bottomSection: {
+        flex: 2,
+        padding: 20,
+        backgroundColor: "#f6f6f6",
+    },
 
-  bottomSection: {
-    flex: 2,
-    padding: 20,
-    backgroundColor: "#f6f6f6",
-  },
+    weekHeader: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        marginBottom: 6,
+    },
 
-  weekHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 6,
-  },
+    day: {
+        flex: 1,
+        textAlign: "center",
+        fontWeight: "600",
+    },
 
-  day: {
-    flex: 1,
-    textAlign: "center",
-    fontWeight: "600",
-  },
+    dateRow: {
+        flexDirection: "row",
+        marginBottom: 4,
+    },
 
-  dateRow: {
-    flexDirection: "row",
-    marginBottom: 4,
-  },
-
-  dateBox: {
-    flex: 1,
-    aspectRatio: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 8,
-    margin: 2,
-  },
-});
+    dateBox: {
+        flex: 1,
+        aspectRatio: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        borderRadius: 8,
+        margin: 2,
+    },
+    });

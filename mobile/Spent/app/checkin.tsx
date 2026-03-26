@@ -1,227 +1,79 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  LayoutAnimation,
-  Platform,
-  UIManager,
-} from "react-native";
-import { useLocalSearchParams, router } from "expo-router";
-import { useState } from "react";
-import Slider from "@react-native-community/slider";
-
-if (Platform.OS === "android") {
-  UIManager.setLayoutAnimationEnabledExperimental?.(true);
-}
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { router } from "expo-router";
 
 export default function CheckIn() {
-  const { token } = useLocalSearchParams();
-  const [activeLocation, setActiveLocation] = useState<string | null>(null);
+    const locations = [
+        { name: "Starbucks", category: "Dining" },
+        { name: "Whole Foods", category: "Groceries" },
+        { name: "Uber", category: "Uber" },
+    ];
 
-  const locations = [
-    { name: "Starbucks", category: "Dining" },
-    { name: "Whole Foods", category: "Groceries" },
-    { name: "Uber", category: "Uber" },
-    { name: "Movies", category: "Fun" },
-  ];
+    const spendOptions = [
+        { label: "Cheapest ($0–10)", value: 10, color: "#D8B4F8" },     // lilac
+        { label: "Moderate ($10–15)", value: 15, color: "#C7F36B" },    // lime
+        { label: "Expensive ($15–25+)", value: 25, color: "#f96868" },  // pastel red
+    ];
 
-  const [sliderValues, setSliderValues] = useState<Record<string, number>>({
-    Starbucks: 15,
-    "Whole Foods": 30,
-    Uber: 20,
-    Movies: 18,
-  });
+    const handleSpend = (location: any, amount: number) => {
+        //changed from push to replae because we want to replace the current screen with the dashboard after check-in instead of stacking it on top
+        router.replace({
+        pathname: "/",
+        params: {
+            location: location.name,
+            category: location.category,
+            amount,
+        },
+        });
+    };
 
-  const tickMarks = [0, 25, 50, 75, 100];
+    return (
+        <View style={styles.container}>
+        <Text style={styles.title}>Where are you?</Text>
 
-  const handleSpend = (location: { name: string; category: string }) => {
-    const amount = Number(sliderValues[location.name] ?? 0);
+        {locations.map((location) => (
+            <View key={location.name} style={styles.card}>
+            <Text style={styles.locationTitle}>{location.name}</Text>
 
-    router.replace({
-      pathname: "/(tabs)/dashboard",
-      params: {
-        token,
-        location: location.name,
-        category: location.category,
-        amount: String(amount),
-      },
-    });
-  };
-
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Where are you?</Text>
-
-      {locations.map((location) => {
-        const isActive = activeLocation === location.name;
-        const currentValue = Number(sliderValues[location.name] ?? 0);
-
-        return (
-          <View key={location.name} style={styles.cardContainer}>
-            <TouchableOpacity
-              style={[styles.card, isActive && styles.cardActive]}
-              onPress={() => {
-                LayoutAnimation.configureNext(
-                  LayoutAnimation.Presets.easeInEaseOut
-                );
-                setActiveLocation(isActive ? null : location.name);
-              }}
-            >
-              <Text style={styles.cardTitle}>{location.name}</Text>
-              <Text style={styles.cardCategory}>{location.category}</Text>
-            </TouchableOpacity>
-
-            {isActive && (
-              <View style={styles.sliderContainer}>
-                <View style={styles.sliderHeader}>
-                  <Text style={styles.sliderLabel}>Spend amount</Text>
-                  <Text style={styles.sliderValue}>
-                    ${Number.isFinite(currentValue) ? Math.round(currentValue) : 0}
-                  </Text>
-                </View>
-
-                <Slider
-                  style={styles.slider}
-                  minimumValue={0}
-                  maximumValue={100}
-                  step={1}
-                  value={Number.isFinite(currentValue) ? currentValue : 0}
-                  minimumTrackTintColor="#C7F36B"
-                  maximumTrackTintColor="#D9D9D9"
-                  thumbTintColor="#111"
-                  onValueChange={(value) => {
-                    if (typeof value !== "number" || isNaN(value)) return;
-
-                    setSliderValues((prev) => ({
-                      ...prev,
-                      [location.name]: Math.round(value),
-                    }));
-                  }}
-                />
-
-                <View style={styles.rangeLabels}>
-                  {tickMarks.map((val) => (
-                    <Text key={val} style={styles.rangeText}>
-                      ${val}
-                    </Text>
-                  ))}
-                </View>
-
+            {spendOptions.map((option) => (
                 <TouchableOpacity
-                  style={styles.confirmButton}
-                  onPress={() => handleSpend(location)}
+                key={option.label}
+                style={[styles.spendButton, { backgroundColor: option.color }]}
+                onPress={() => handleSpend(location, option.value)}
                 >
-                  <Text style={styles.confirmText}>Add to Dashboard</Text>
+                <Text style={styles.spendText}>{option.label}</Text>
                 </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        );
-      })}
-    </View>
-  );
-}
+            ))}
+            </View>
+        ))}
+        </View>
+    );
+    }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 40,
-    backgroundColor: "#f7f7f7",
-  },
+    const styles = StyleSheet.create({
+    container: { flex: 1, padding: 20, backgroundColor: "white" },
+    title: { fontSize: 22, fontWeight: "bold", marginBottom: 20 },
 
-  title: {
-    fontSize: 26,
-    fontWeight: "700",
-    marginBottom: 25,
-    color: "#111",
-  },
+    card: {
+        padding: 15,
+        backgroundColor: "#f4f4f4",
+        borderRadius: 12,
+        marginBottom: 20,
+    },
 
-  cardContainer: {
-    marginBottom: 20,
-  },
+    locationTitle: {
+        fontSize: 18,
+        fontWeight: "600",
+        marginBottom: 10,
+    },
 
-  card: {
-    backgroundColor: "white",
-    padding: 22,
-    borderRadius: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
+    spendButton: {
+        backgroundColor: "black",
+        padding: 10,
+        borderRadius: 8,
+        marginBottom: 8,
+    },
 
-  cardActive: {
-    borderWidth: 2,
-    borderColor: "#C7F36B",
-  },
-
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#111",
-  },
-
-  cardCategory: {
-    marginTop: 4,
-    fontSize: 14,
-    color: "#666",
-  },
-
-  sliderContainer: {
-    marginTop: 12,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
-  },
-
-  sliderHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-
-  sliderLabel: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111",
-  },
-
-  sliderValue: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111",
-  },
-
-  slider: {
-    width: "100%",
-    height: 40,
-    marginTop: 8,
-  },
-
-  rangeLabels: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-
-  rangeText: {
-    fontSize: 12,
-    color: "#666",
-  },
-
-  confirmButton: {
-    marginTop: 16,
-    backgroundColor: "#C7F36B",
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-  },
-
-  confirmText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111",
-  },
+    spendText: {
+        textAlign: "center", fontWeight: "600",
+    },
 });
