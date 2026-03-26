@@ -78,7 +78,7 @@ export default function Dashboard() {
       // Send events to backend for analysis
   const sendEventsToBackend = async (groupedEvents: any) => {
     try {
-      const response = await fetch("http://localhost:8000/ollama/analyze", {
+      const response = await fetch("http://10.239.5.18:8000/ollama/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -86,8 +86,7 @@ export default function Dashboard() {
         body: JSON.stringify({ events: groupedEvents }),
       });
       const result = await response.json();
-      console.log("AI API result:", result);
-      // Handle result as needed
+      console.log("Ollama result:", JSON.stringify(result, null, 2));
     } catch (err) {
       console.error("Error sending events to backend:", err);
     }

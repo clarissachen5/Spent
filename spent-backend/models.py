@@ -1,7 +1,19 @@
-from sqlalchemy import String, Float, DateTime, func
+from sqlalchemy import String, Float, DateTime, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 from typing import Optional
 from db import Base
+
+
+class SpendingAnalysis(Base):
+    __tablename__ = "spending_analyses"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    events_input: Mapped[str] = mapped_column(Text, nullable=False)
+    raw_response: Mapped[str] = mapped_column(Text, nullable=False)
+    parsed_estimates: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON string
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class Expense(Base):
