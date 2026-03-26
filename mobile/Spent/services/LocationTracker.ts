@@ -2,7 +2,9 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import { API_BASE_URL, GOOGLE_MAPS_KEY } from '../constants/config';
+import { getFirestore, collection, addDoc } from 'firebase/firestore';
+import { app } from '../src/config/firebase';
+import { GOOGLE_MAPS_KEY } from '../constants/config';
 
 const LOCATION_TASK_NAME = 'spent-background-location';
 const DWELL_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
@@ -39,7 +41,7 @@ function inferCategory(types: string[]): string {
   return 'Other';
 }
 
-// ── Fetch nearest business via Google Places, then save to backend ────────────
+// ── Fetch nearest business via Google Places, then save to Firestore ──────────
 async function createDetectedLocation(lat: number, lng: number, arrivedAt: number) {
   try {
     const placesResp = await axios.get(
@@ -49,16 +51,17 @@ async function createDetectedLocation(lat: number, lng: number, arrivedAt: numbe
     const place = placesResp.data.results?.[0];
     if (!place) return;
 
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    await axios.post(`${API_BASE_URL}/detected-locations`, {
-      id,
+    const db = getFirestore(app);
+    await addDoc(collection(db, 'detected_locations'), {
       google_place_id: place.place_id,
-      place_name: place.name,
-      address: place.vicinity ?? '',
-      category: inferCategory(place.types ?? []),
-      latitude: lat,
-      longitude: lng,
-      arrived_at: new Date(arrivedAt).toISOString(),
+      place_name:      place.name,
+      address:         place.vicinity ?? '',
+      category:        inferCategory(place.types ?? []),
+      latitude:        lat,
+      longitude:       lng,
+      arrived_at:      new Date(arrivedAt).toISOString(),
+      flashcard_shown: false,
+      created_at:      new Date().toISOString(),
     });
   } catch (e) {
     console.error('[LocationTracker] failed to create detected location:', e);

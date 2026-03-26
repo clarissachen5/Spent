@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
-import { API_BASE_URL } from '../constants/config';
+import { getFirestore, collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { app } from '../src/config/firebase';
 import { startLocationTracking } from '../services/LocationTracker';
 
 export interface CheckInResult {
@@ -49,7 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [checkInResults, setCheckInResults] = useState<CheckInResult[]>([]);
   const [pendingLocations, setPendingLocations] = useState<DetectedLocation[]>([]);
 
-  // Start background location tracking and fetch any pending flashcards on launch
+  // Start background location tracking and fetch pending flashcards on launch
   useEffect(() => {
     startLocationTracking().catch(console.error);
     fetchPendingLocations();
@@ -57,10 +57,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function fetchPendingLocations() {
     try {
-      const resp = await axios.get<DetectedLocation[]>(`${API_BASE_URL}/detected-locations/pending`);
-      setPendingLocations(resp.data);
-    } catch {
-      // Backend unreachable — CheckInModal falls back to hardcoded locations
+      const db = getFirestore(app);
+      const q = query(
+        collection(db, 'detected_locations'),
+        where('flashcard_shown', '==', false)
+      );
+      const snapshot = await getDocs(q);
+      const locations: DetectedLocation[] = snapshot.docs.map(d => ({
+        id: d.id,
+        ...(d.data() as Omit<DetectedLocation, 'id'>),
+      }));
+      setPendingLocations(locations);
+    } catch (e) {
+      // Firestore unavailable — CheckInModal falls back to hardcoded locations
     }
   }
 
@@ -70,7 +79,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const markLocationShown = async (id: string) => {
     try {
-      await axios.patch(`${API_BASE_URL}/detected-locations/${id}/shown`);
+      const db = getFirestore(app);
+      await updateDoc(doc(db, 'detected_locations', id), { flashcard_shown: true });
     } catch {
       // best effort
     }
