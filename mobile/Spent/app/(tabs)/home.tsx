@@ -12,6 +12,7 @@ import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import CheckInModal from '../../components/CheckInModal';
+import { API_BASE_URL } from '../../constants/config';
 
 // ── Figma assets (local SVGs with CSS vars resolved) ─────────────────────────
 const chevronLeft        = require('../../assets/icons/chevronLeft.svg');
@@ -98,6 +99,7 @@ export default function HomeScreen() {
     if (checkIn) setCheckInVisible(true);
   }, [checkIn]);
   const [eventCounts, setEventCounts] = useState<{ [key: string]: number }>({});
+  const [predictions, setPredictions] = useState<any[]>([]);
   // Track which "YYYY-M" months have already been fetched so we don't re-request
   const [fetchedMonths, setFetchedMonths] = useState<Set<string>>(new Set());
 
@@ -148,7 +150,8 @@ export default function HomeScreen() {
       );
       const data = await response.json();
       if (!response.ok) throw new Error('Failed to fetch events');
-      return parseEvents(data.items || []);
+      const items = data.items || [];
+      return { counts: parseEvents(items), items };
     };
 
     const fetchNeeded = async () => {
@@ -159,11 +162,60 @@ export default function HomeScreen() {
             return fetchMonth(year, month);
           })
         );
-        const merged = Object.assign({}, ...results);
-        setEventCounts(prev => ({ ...prev, ...merged }));
+        const mergedCounts = Object.assign({}, ...results.map(r => r.counts));
+        setEventCounts(prev => ({ ...prev, ...mergedCounts }));
         setFetchedMonths(prev => new Set([...prev, ...needed]));
-      } catch (_) {
-        // silently fail
+
+        // Collect upcoming events (within visible window) and send to backend
+        const visibleDateStrs = new Set(visibleDates.map(toDateStr));
+        console.log('[Ollama] visible date range:', [...visibleDateStrs]);
+
+        const allItems = results.flatMap(r => r.items);
+        console.log('[Ollama] total calendar items fetched:', allItems.length);
+
+        const upcomingEvents = allItems
+          .filter((ev: any) => {
+            const d = ev.start?.date?.split('T')[0] ?? ev.start?.dateTime?.split('T')[0];
+            return d && visibleDateStrs.has(d);
+          })
+          .map((ev: any) => ({
+            title: ev.summary ?? 'Untitled',
+            date: ev.start?.date?.split('T')[0] ?? ev.start?.dateTime?.split('T')[0],
+          }));
+
+        const trimmedEvents = upcomingEvents.slice(0, 10);
+        console.log('[Ollama] events in visible window:', upcomingEvents.length, trimmedEvents);
+
+        if (trimmedEvents.length > 0) {
+          console.log('[Ollama] calling backend at:', `${API_BASE_URL}/ollama/analyze`);
+          try {
+            const ollamaRes = await fetch(`${API_BASE_URL}/ollama/analyze`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ events: trimmedEvents }),
+            });
+            console.log('[Ollama] response status:', ollamaRes.status);
+            if (ollamaRes.ok) {
+              const analysis = await ollamaRes.json();
+              console.log('[Ollama] raw response:', analysis.raw_response);
+              if (analysis.parsed_estimates) {
+                const parsed = JSON.parse(analysis.parsed_estimates);
+                setPredictions(parsed.estimates ?? []);
+                console.log('[Ollama] predictions:', parsed.estimates);
+              } else {
+                console.warn('[Ollama] no parsed_estimates in response:', analysis);
+              }
+            } else {
+              console.warn('[Ollama] bad status:', ollamaRes.status);
+            }
+          } catch (e) {
+            console.warn('[Ollama] analyze failed:', e);
+          }
+        } else {
+          console.log('[Ollama] no events in visible window — skipping backend call');
+        }
+      } catch (e) {
+        console.warn('[fetchNeeded] error:', e);
       }
     };
 
@@ -305,6 +357,26 @@ export default function HomeScreen() {
         <Image source={calendarIcon} style={styles.calendarIconImg} contentFit="contain" />
         <Text style={styles.sectionTitle}>Upcoming Expenses</Text>
       </View>
+
+      {/* ── Ollama predictions ── */}
+      {predictions.length > 0 && (
+        <View style={styles.predictionsCard}>
+          {predictions.map((p, i) => (
+            <View key={i} style={[styles.predictionRow, i < predictions.length - 1 && styles.categoryDivider]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.predictionEvent}>{p.event}</Text>
+                <Text style={styles.predictionDate}>{p.date}</Text>
+              </View>
+              <View style={styles.predictionAmounts}>
+                <Text style={styles.predictionLow}>${p.low?.amount?.toFixed(2)}</Text>
+                <Text style={styles.predictionMed}>${p.medium?.amount?.toFixed(2)}</Text>
+                <Text style={styles.predictionHigh}>${p.high?.amount?.toFixed(2)}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
       <CheckInModal
         visible={checkInVisible}
         onClose={() => setCheckInVisible(false)}
@@ -580,6 +652,48 @@ const styles = StyleSheet.create({
   budgetMarkerImg: {
     width: 1,
     height: 21.5,
+  },
+  predictionsCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
+    gap: 7,
+  },
+  predictionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  predictionEvent: {
+    fontSize: 12,
+    color: '#1e1d19',
+    fontWeight: '500',
+  },
+  predictionDate: {
+    fontSize: 10,
+    color: '#a5a5a5',
+  },
+  predictionAmounts: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  predictionLow: {
+    fontSize: 11,
+    color: '#0a542f',
+  },
+  predictionMed: {
+    fontSize: 11,
+    color: '#800039',
+  },
+  predictionHigh: {
+    fontSize: 11,
+    color: '#4F090B',
   },
   amountGroup: {
     flexDirection: 'row',

@@ -12,7 +12,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.clchen5.spent",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
       }
     },
     "android": {
