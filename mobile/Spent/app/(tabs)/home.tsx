@@ -185,7 +185,7 @@ export default function HomeScreen() {
             date: ev.start?.date?.split('T')[0] ?? ev.start?.dateTime?.split('T')[0],
           }));
 
-        const trimmedEvents = upcomingEvents.slice(0, 10);
+        const trimmedEvents = upcomingEvents.slice(0, 5);
         console.log('[Ollama] events in visible window:', upcomingEvents.length, trimmedEvents);
 
         if (trimmedEvents.length > 0) {
@@ -200,12 +200,37 @@ export default function HomeScreen() {
             if (ollamaRes.ok) {
               const analysis = await ollamaRes.json();
               console.log('[Ollama] raw response:', analysis.raw_response);
-              if (analysis.parsed_estimates) {
-                const parsed = JSON.parse(analysis.parsed_estimates);
-                setPredictions(parsed.estimates ?? []);
-                console.log('[Ollama] predictions:', parsed.estimates);
-              } else {
-                console.warn('[Ollama] no parsed_estimates in response:', analysis);
+
+              // Try parsed_estimates first, fall back to parsing raw_response
+              let estimates: any[] = [];
+              try {
+                if (analysis.parsed_estimates) {
+                  estimates = JSON.parse(analysis.parsed_estimates).estimates ?? [];
+                } else {
+                  const match = analysis.raw_response.match(/\{[\s\S]*\}/);
+                  if (match) estimates = JSON.parse(match[0]).estimates ?? [];
+                }
+              } catch (e) {
+                console.warn('[Ollama] could not parse estimates:', e);
+              }
+
+              if (estimates.length > 0) {
+                setPredictions(estimates);
+                console.log('[Ollama] predictions:', estimates);
+              }
+
+              // Save to Firestore regardless
+              try {
+                const db = getFirestore(app);
+                await addDoc(collection(db, 'spending_analyses'), {
+                  events_input: analysis.events_input,
+                  raw_response: analysis.raw_response,
+                  estimates: estimates.length > 0 ? estimates : null,
+                  created_at: new Date().toISOString(),
+                });
+                console.log('[Firestore] analysis saved');
+              } catch (e) {
+                console.warn('[Firestore] save failed:', e);
               }
             } else {
               console.warn('[Ollama] bad status:', ollamaRes.status);
