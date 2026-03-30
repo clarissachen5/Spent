@@ -65,11 +65,11 @@ function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// Green heatmap: no events = mint, more events = darker green
-function getHeatmapColor(count: number): string {
-  if (!count) return '#d2f3e2';
-  const t = Math.min(count, 5) / 5;
-  // interpolate from mint #d2f3e2 → dark green #0a542f
+// Green heatmap: $0 = mint, $100+ = dark green
+const HEATMAP_MAX = 100;
+function getHeatmapColor(dollars: number): string {
+  if (!dollars) return '#d2f3e2';
+  const t = Math.min(dollars, HEATMAP_MAX) / HEATMAP_MAX;
   const r = Math.round(210 - t * (210 - 10));
   const g = Math.round(243 - t * (243 - 84));
   const b = Math.round(226 - t * (226 - 47));
@@ -79,7 +79,7 @@ function getHeatmapColor(count: number): string {
 export default function HomeScreen() {
   const { top } = useSafeAreaInsets();
   const { token: paramToken, checkIn } = useLocalSearchParams();
-  const { token: contextToken, checkInResults } = useAuth();
+  const { token: contextToken, checkInResults, predictions, setPredictions } = useAuth();
   const token = contextToken ?? paramToken;
 
   const categoryTotals = useMemo(() => {
@@ -91,6 +91,16 @@ export default function HomeScreen() {
     });
     return totals;
   }, [checkInResults]);
+
+  // Sum medium predicted spend per day
+  const predictedTotalsByDate = useMemo(() => {
+    const totals: { [date: string]: number } = {};
+    predictions.forEach(p => {
+      totals[p.date] = (totals[p.date] || 0) + (p.medium?.amount ?? 0);
+    });
+    return totals;
+  }, [predictions]);
+
   const totalSaved = 362;
   const streak = 3;
   const [dayOffset, setDayOffset] = useState(0);
@@ -101,7 +111,6 @@ export default function HomeScreen() {
     if (checkIn) setCheckInVisible(true);
   }, [checkIn]);
   const [eventCounts, setEventCounts] = useState<{ [key: string]: number }>({});
-  const [predictions, setPredictions] = useState<any[]>([]);
   // Track which "YYYY-M" months have already been fetched so we don't re-request
   const [fetchedMonths, setFetchedMonths] = useState<Set<string>>(new Set());
 
@@ -215,7 +224,7 @@ export default function HomeScreen() {
               }
 
               if (estimates.length > 0) {
-                setPredictions(estimates);
+                setPredictions(estimates as any);
                 console.log('[Ollama] predictions:', estimates);
               }
 
@@ -282,11 +291,11 @@ export default function HomeScreen() {
         }>
           <View style={styles.weekRow}>
             {visibleDates.map((date, i) => {
-              const count = eventCounts[toDateStr(date)] || 0;
+              const dollars = predictedTotalsByDate[toDateStr(date)] || 0;
               return (
                 <View key={i} style={styles.dayCard}>
                   <Text style={styles.dayLabel}>{DAY_NAMES[date.getDay()]}</Text>
-                  <View style={[styles.dayCircle, { backgroundColor: getHeatmapColor(count) }]}>
+                  <View style={[styles.dayCircle, { backgroundColor: getHeatmapColor(dollars) }]}>
                     <Text style={styles.dayNumber}>{date.getDate()}</Text>
                   </View>
                 </View>

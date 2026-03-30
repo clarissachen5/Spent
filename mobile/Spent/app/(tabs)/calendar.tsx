@@ -10,7 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, SpendingEstimate } from '../../context/AuthContext';
 
 // ── Assets ────────────────────────────────────────────────────────────────────
 const chevronLeft  = require('../../assets/icons/chevronLeft.svg');
@@ -39,9 +39,10 @@ interface CalendarEvent {
   isAllDay:  boolean;
 }
 
-function getHeatmapColor(count: number): string {
-  if (!count) return MINT;
-  const t = Math.min(count, 5) / 5;
+const HEATMAP_MAX = 100;
+function getHeatmapColor(dollars: number): string {
+  if (!dollars) return MINT;
+  const t = Math.min(dollars, HEATMAP_MAX) / HEATMAP_MAX;
   const r = Math.round(210 - t * (210 - 10));
   const g = Math.round(243 - t * (243 - 84));
   const b = Math.round(226 - t * (226 - 47));
@@ -74,13 +75,21 @@ function sortEvents(events: CalendarEvent[]): CalendarEvent[] {
 
 export default function CalendarScreen() {
   const { top }   = useSafeAreaInsets();
-  const { token, checkInResults } = useAuth();
+  const { token, checkInResults, predictions } = useAuth();
 
   const [monthOffset, setMonthOffset]       = useState(0);
   const [eventCounts, setEventCounts]       = useState<{ [dateStr: string]: number }>({});
   const [eventsByDate, setEventsByDate]     = useState<{ [dateStr: string]: CalendarEvent[] }>({});
   const [fetchedMonths, setFetchedMonths]   = useState<Set<string>>(new Set());
   const [selectedDate, setSelectedDate]     = useState<string | null>(null);
+
+  // Build lookup maps from Ollama predictions
+  const predictedTotalsByDate: { [date: string]: number } = {};
+  const predictedByEventTitle: { [key: string]: number } = {}; // "date|title" -> medium amount
+  predictions.forEach((p: SpendingEstimate) => {
+    predictedTotalsByDate[p.date] = (predictedTotalsByDate[p.date] || 0) + (p.medium?.amount ?? 0);
+    predictedByEventTitle[`${p.date}|${p.event}`] = p.medium?.amount ?? 0;
+  });
 
   const today       = new Date();
   const displayDate = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
@@ -228,7 +237,7 @@ export default function CalendarScreen() {
                 if (!day) return <View key={di} style={styles.dayCell} />;
 
                 const dateStr = toDateStr(year, month, day);
-                const count   = eventCounts[dateStr] || 0;
+                const dollars = predictedTotalsByDate[dateStr] || 0;
                 const isToday =
                   day === today.getDate() &&
                   month === today.getMonth() &&
@@ -245,7 +254,7 @@ export default function CalendarScreen() {
                     <View
                       style={[
                         styles.dayCircle,
-                        { backgroundColor: getHeatmapColor(count) },
+                        { backgroundColor: getHeatmapColor(dollars) },
                         isToday    && styles.todayRing,
                         isSelected && styles.selectedRing,
                       ]}
@@ -280,11 +289,18 @@ export default function CalendarScreen() {
       {selectedDate && (
         <View style={styles.eventsPanel}>
           <View style={styles.eventsPanelHeader}>
-            <Text style={styles.eventsPanelTitle}>
-              {selectedDay
-                ? `${DAY_NAMES[selectedDay.getDay()]}, ${MONTH_NAMES[selectedDay.getMonth()]} ${selectedDay.getDate()}`
-                : ''}
-            </Text>
+            <View>
+              <Text style={styles.eventsPanelTitle}>
+                {selectedDay
+                  ? `${DAY_NAMES[selectedDay.getDay()]}, ${MONTH_NAMES[selectedDay.getMonth()]} ${selectedDay.getDate()}`
+                  : ''}
+              </Text>
+              {selectedDate && predictedTotalsByDate[selectedDate] > 0 && (
+                <Text style={styles.dayTotalText}>
+                  Est. total: ${predictedTotalsByDate[selectedDate].toFixed(2)}
+                </Text>
+              )}
+            </View>
             <TouchableOpacity onPress={() => setSelectedDate(null)} hitSlop={12}>
               <Text style={styles.closeBtn}>✕</Text>
             </TouchableOpacity>
@@ -322,31 +338,39 @@ export default function CalendarScreen() {
                   <Text style={[styles.sectionLabel, selectedCheckIns.length > 0 && { marginTop: 14 }]}>
                     Events
                   </Text>
-                  {selectedEvents.map((item, i) => (
-                    <View key={item.id}>
-                      <View style={styles.eventRow}>
-                        <View style={styles.eventTimePart}>
-                          {item.isAllDay ? (
-                            <Text style={styles.allDayBadge}>All day</Text>
-                          ) : (
-                            <>
-                              <Text style={styles.eventTime}>
-                                {item.startTime ? formatTime(item.startTime) : '—'}
-                              </Text>
-                              {item.endTime && (
-                                <Text style={styles.eventTimeEnd}>
-                                  {formatTime(item.endTime)}
+                  {selectedEvents.map((item, i) => {
+                    const mediumAmt = selectedDate
+                      ? predictedByEventTitle[`${selectedDate}|${item.title}`]
+                      : undefined;
+                    return (
+                      <View key={item.id}>
+                        <View style={styles.eventRow}>
+                          <View style={styles.eventTimePart}>
+                            {item.isAllDay ? (
+                              <Text style={styles.allDayBadge}>All day</Text>
+                            ) : (
+                              <>
+                                <Text style={styles.eventTime}>
+                                  {item.startTime ? formatTime(item.startTime) : '—'}
                                 </Text>
-                              )}
-                            </>
+                                {item.endTime && (
+                                  <Text style={styles.eventTimeEnd}>
+                                    {formatTime(item.endTime)}
+                                  </Text>
+                                )}
+                              </>
+                            )}
+                          </View>
+                          <View style={styles.eventDot} />
+                          <Text style={styles.eventTitle} numberOfLines={2}>{item.title}</Text>
+                          {mediumAmt != null && mediumAmt > 0 && (
+                            <Text style={styles.eventEstimate}>${mediumAmt.toFixed(2)}</Text>
                           )}
                         </View>
-                        <View style={styles.eventDot} />
-                        <Text style={styles.eventTitle} numberOfLines={2}>{item.title}</Text>
+                        {i < selectedEvents.length - 1 && <View style={styles.eventDivider} />}
                       </View>
-                      {i < selectedEvents.length - 1 && <View style={styles.eventDivider} />}
-                    </View>
-                  ))}
+                    );
+                  })}
                 </>
               )}
 
@@ -542,6 +566,18 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     color: '#1e1d19',
+  },
+  eventEstimate: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: DARK_GREEN,
+    marginLeft: 4,
+  },
+  dayTotalText: {
+    fontSize: 11,
+    color: DARK_GREEN,
+    fontWeight: '600',
+    marginTop: 2,
   },
   eventDivider: {
     height: StyleSheet.hairlineWidth,
