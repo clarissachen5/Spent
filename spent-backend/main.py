@@ -1,7 +1,9 @@
 import json
 import re
 import uuid
+import traceback
 from fastapi import FastAPI, Depends, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from db import get_db
 from models import Expense, SpendingAnalysis
@@ -12,9 +14,12 @@ app = FastAPI()
 ollama_client = Client()
 
 
-@app.post("/ollama/analyze", response_model=SpendingAnalysisOut)
-async def analyze_events(request: Request, db: Session = Depends(get_db)):
-    data = await request.json()
+@app.post("/ollama/analyze")
+async def analyze_events(request: Request):
+    try:
+        data = await request.json()
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
     events = data.get("events", {})
 
     prompt = f"""Given these events {json.dumps(events, indent=2)} estimate how much this college student would spend at each event. Give me back three different amounts low, medium, high. With each spend amount give me a max three word description of what they buy.
@@ -33,12 +38,16 @@ Return ONLY a JSON object with this structure, no explanation:
 }}
 """
 
-    result = ollama_client.generate(model="llama3", prompt=prompt)
-    raw_response = result["response"]
+    print("Calling Ollama with", len(events), "events...")
+    try:
+        result = ollama_client.generate(model="llama3.2:3b", prompt=prompt)
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": f"Ollama error: {str(e)}"})
+    raw_response = result.response
 
     print("Ollama output:", raw_response)
 
-    # Try to extract JSON from the response
     parsed_estimates = None
     try:
         json_match = re.search(r"\{[\s\S]*\}", raw_response)
@@ -48,17 +57,13 @@ Return ONLY a JSON object with this structure, no explanation:
     except Exception:
         parsed_estimates = None
 
-    analysis = SpendingAnalysis(
-        id=str(uuid.uuid4()),
-        events_input=json.dumps(events),
-        raw_response=raw_response,
-        parsed_estimates=parsed_estimates,
-    )
-    db.add(analysis)
-    db.commit()
-    db.refresh(analysis)
-
-    return analysis
+    return JSONResponse(content={
+        "id": str(uuid.uuid4()),
+        "events_input": json.dumps(events),
+        "raw_response": raw_response,
+        "parsed_estimates": parsed_estimates,
+        "created_at": str(__import__("datetime").datetime.utcnow()),
+    })
 
 
 @app.get("/ollama/analyses", response_model=list[SpendingAnalysisOut])

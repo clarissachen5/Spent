@@ -13,6 +13,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import CheckInModal from '../../components/CheckInModal';
 import { API_BASE_URL } from '../../constants/config';
+import { getFirestore, collection, addDoc } from 'firebase/firestore';
+import { app } from '../../src/config/firebase';
 
 // ── Figma assets (local SVGs with CSS vars resolved) ─────────────────────────
 const chevronLeft        = require('../../assets/icons/chevronLeft.svg');
