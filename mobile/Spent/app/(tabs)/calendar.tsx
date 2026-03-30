@@ -27,7 +27,8 @@ const MONTH_NAMES = [
 ];
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const DARK_GREEN = '#0a542f';
+const LIME_GREEN = '#cdf545';
+const DARK_TEXT  = '#1e1d19';
 const MINT       = '#d2f3e2';
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -39,13 +40,12 @@ interface CalendarEvent {
   isAllDay:  boolean;
 }
 
+// count 0 → white (ring added in JSX); count 1–5 → transparent lime → full lime
 function getHeatmapColor(count: number): string {
-  if (!count) return MINT;
+  if (!count) return 'white';
   const t = Math.min(count, 5) / 5;
-  const r = Math.round(210 - t * (210 - 10));
-  const g = Math.round(243 - t * (243 - 84));
-  const b = Math.round(226 - t * (226 - 47));
-  return `rgb(${r}, ${g}, ${b})`;
+  const opacity = 0.15 + t * 0.85; // 0.15 → 1.0, all in lime green
+  return `rgba(205, 245, 69, ${opacity.toFixed(2)})`;
 }
 
 function toDateStr(year: number, month: number, day: number): string {
@@ -235,6 +235,21 @@ export default function CalendarScreen() {
                   year === today.getFullYear();
                 const isSelected = selectedDate === dateStr;
 
+                let circleBg     = getHeatmapColor(count);
+                let circleBorder: string | undefined;
+                let circleSize   = CELL_SIZE - 4;
+                if (!count)     { circleBorder = LIME_GREEN; }
+                if (isToday)    { circleBg = 'transparent'; circleBorder = LIME_GREEN; /* size set below */ }
+                if (isSelected) { circleBg = 'rgba(205,245,69,0.18)'; circleBorder = LIME_GREEN; }
+
+                // Sun geometry — smaller circle so rays have room to breathe
+                const TODAY_R   = Math.round((CELL_SIZE - 4) * 0.52);
+                const RAY_LEN   = 7;
+                const RAY_GAP   = 4;
+                const rayRadius = TODAY_R / 2 + RAY_GAP + RAY_LEN / 2;
+                const cx = CELL_SIZE / 2;
+                const cy = CELL_SIZE / 2;
+
                 return (
                   <TouchableOpacity
                     key={di}
@@ -242,22 +257,48 @@ export default function CalendarScreen() {
                     onPress={() => setSelectedDate(isSelected ? null : dateStr)}
                     activeOpacity={0.7}
                   >
+                    {/* Sun rays — only for today */}
+                    {isToday && Array.from({ length: 8 }, (_, i) => {
+                      const rad = (i * 45 * Math.PI) / 180;
+                      const mx  = cx + rayRadius * Math.cos(rad);
+                      const my  = cy + rayRadius * Math.sin(rad);
+                      return (
+                        <View
+                          key={i}
+                          style={{
+                            position: 'absolute',
+                            width: RAY_LEN,
+                            height: 2.5,
+                            borderRadius: 1.5,
+                            backgroundColor: LIME_GREEN,
+                            left: mx - RAY_LEN / 2,
+                            top:  my - 1.25,
+                            transform: [{ rotate: `${i * 45}deg` }],
+                          }}
+                        />
+                      );
+                    })}
+                    {/* Heatmap circle — uniform size (smaller for today) */}
                     <View
                       style={[
                         styles.dayCircle,
-                        { backgroundColor: getHeatmapColor(count) },
-                        isToday    && styles.todayRing,
-                        isSelected && styles.selectedRing,
+                        {
+                          backgroundColor: circleBg,
+                          borderWidth:  circleBorder ? 1.5 : 0,
+                          borderColor:  circleBorder ?? 'transparent',
+                          width:        isToday ? TODAY_R : circleSize,
+                          height:       isToday ? TODAY_R : circleSize,
+                          borderRadius: isToday ? TODAY_R / 2 : circleSize / 2,
+                        },
                       ]}
-                    >
-                      <Text style={[
-                        styles.dayNumber,
-                        isToday    && styles.todayNumber,
-                        isSelected && styles.selectedNumber,
-                      ]}>
-                        {day}
-                      </Text>
-                    </View>
+                    />
+                    {/* Day number always visible, centered over the circle */}
+                    <Text style={[
+                      styles.dayNumber,
+                      isSelected && styles.selectedNumber,
+                    ]}>
+                      {day}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
@@ -268,7 +309,17 @@ export default function CalendarScreen() {
           <View style={styles.legend}>
             <Text style={styles.legendLabel}>Less</Text>
             {[0, 1, 2, 3, 4, 5].map(v => (
-              <View key={v} style={[styles.legendDot, { backgroundColor: getHeatmapColor(v) }]} />
+              <View
+                key={v}
+                style={[
+                  styles.legendDot,
+                  {
+                    backgroundColor: getHeatmapColor(v),
+                    borderWidth: v === 0 ? 1.5 : 0,
+                    borderColor: v === 0 ? LIME_GREEN : 'transparent',
+                  },
+                ]}
+              />
             ))}
             <Text style={styles.legendLabel}>More</Text>
           </View>
@@ -380,7 +431,7 @@ const styles = StyleSheet.create({
   pageTitle: {
     fontSize: 24,
     fontWeight: '700',
-    color: DARK_GREEN,
+    color: DARK_TEXT,
   },
 
   calendarCard: {
@@ -405,7 +456,7 @@ const styles = StyleSheet.create({
   monthLabel: {
     fontSize: 17,
     fontWeight: '700',
-    color: DARK_GREEN,
+    color: DARK_TEXT,
   },
 
   // Day headers
@@ -420,26 +471,24 @@ const styles = StyleSheet.create({
 
   // Grid
   weekRow: { flexDirection: 'row', marginBottom: 6 },
-  dayCell: { width: CELL_SIZE, alignItems: 'center' },
-  dayCircle: {
-    width: CELL_SIZE - 4,
-    height: CELL_SIZE - 4,
-    borderRadius: (CELL_SIZE - 4) / 2,
+  dayCell: {
+    width: CELL_SIZE,
+    height: CELL_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  todayRing: {
-    borderWidth: 2,
-    borderColor: DARK_GREEN,
+  dayCircle: {
+    position: 'absolute',
+    width:        CELL_SIZE - 4,
+    height:       CELL_SIZE - 4,
+    borderRadius: (CELL_SIZE - 4) / 2,
   },
   selectedRing: {
     borderWidth: 2,
-    borderColor: DARK_GREEN,
-    backgroundColor: DARK_GREEN,
+    borderColor: LIME_GREEN,
   },
   dayNumber: { fontSize: 11, color: '#1e1d19' },
-  todayNumber: { fontWeight: '700', color: DARK_GREEN },
-  selectedNumber: { fontWeight: '700', color: '#fff' },
+  selectedNumber: { fontWeight: '700', color: DARK_TEXT },
 
   // Legend
   legend: {
@@ -466,7 +515,7 @@ const styles = StyleSheet.create({
   eventsPanelTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: DARK_GREEN,
+    color: DARK_TEXT,
   },
   closeBtn: {
     fontSize: 14,
@@ -494,12 +543,12 @@ const styles = StyleSheet.create({
   checkInAmount: {
     fontSize: 13,
     fontWeight: '700',
-    color: DARK_GREEN,
+    color: DARK_TEXT,
   },
   checkInDot: {
     backgroundColor: MINT,
     borderWidth: 1.5,
-    borderColor: DARK_GREEN,
+    borderColor: LIME_GREEN,
   },
 
   // Event rows
@@ -516,7 +565,7 @@ const styles = StyleSheet.create({
   eventTime: {
     fontSize: 11,
     fontWeight: '600',
-    color: DARK_GREEN,
+    color: DARK_TEXT,
   },
   eventTimeEnd: {
     fontSize: 10,
@@ -526,7 +575,7 @@ const styles = StyleSheet.create({
   allDayBadge: {
     fontSize: 10,
     fontWeight: '600',
-    color: DARK_GREEN,
+    color: DARK_TEXT,
     backgroundColor: MINT,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -536,7 +585,7 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: DARK_GREEN,
+    backgroundColor: LIME_GREEN,
   },
   eventTitle: {
     flex: 1,

@@ -11,6 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.clchen5.spent",
+      "backgroundModes": ["fetch", "location"],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Spent tracks your location to detect places you visit and create spending flashcards.",
