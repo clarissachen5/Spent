@@ -179,6 +179,8 @@ export default function Dashboard() {
     return `rgb(${intensity}, 0, 0)`;
   };
 
+  
+
   return (
     <View style={styles.container}>
       <View style={styles.topSection}>
