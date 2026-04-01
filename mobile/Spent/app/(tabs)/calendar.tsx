@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useAuth, SpendingEstimate } from '../../context/AuthContext';
+import { API_BASE_URL } from '../../constants/config';
 
 // ── Assets ────────────────────────────────────────────────────────────────────
 const chevronLeft  = require('../../assets/icons/chevronLeft.svg');
@@ -75,7 +76,7 @@ function sortEvents(events: CalendarEvent[]): CalendarEvent[] {
 
 export default function CalendarScreen() {
   const { top }   = useSafeAreaInsets();
-  const { token, checkInResults, predictions } = useAuth();
+  const { token, checkInResults, predictions, mergePredictions } = useAuth();
 
   const [monthOffset, setMonthOffset]       = useState(0);
   const [eventCounts, setEventCounts]       = useState<{ [dateStr: string]: number }>({});
@@ -85,10 +86,13 @@ export default function CalendarScreen() {
 
   // Build lookup maps from Ollama predictions
   const predictedTotalsByDate: { [date: string]: number } = {};
-  const predictedByEventTitle: { [key: string]: number } = {}; // "date|title" -> medium amount
+  const predictedByEventKey: { [key: string]: { amount: number; description: string } } = {};
   predictions.forEach((p: SpendingEstimate) => {
-    predictedTotalsByDate[p.date] = (predictedTotalsByDate[p.date] || 0) + (p.medium?.amount ?? 0);
-    predictedByEventTitle[`${p.date}|${p.event}`] = p.medium?.amount ?? 0;
+    predictedTotalsByDate[p.date] = (predictedTotalsByDate[p.date] || 0) + Number(p.medium?.amount ?? 0);
+    predictedByEventKey[`${p.date}|${p.event}`] = {
+      amount: Number(p.medium?.amount ?? 0),
+      description: p.medium?.description ?? '',
+    };
   });
 
   const today       = new Date();
@@ -149,6 +153,37 @@ export default function CalendarScreen() {
         setEventCounts(prev => ({ ...prev, ...counts }));
         setEventsByDate(prev => ({ ...prev, ...byDate }));
         setFetchedMonths(prev => new Set([...prev, key]));
+
+        // Send all month events to Ollama in batches of 5
+        const allEvents = Object.entries(byDate).flatMap(([date, evs]) =>
+          evs.map(ev => ({ date, title: ev.title }))
+        );
+        const BATCH = 5;
+        const allEstimates: SpendingEstimate[] = [];
+        for (let i = 0; i < allEvents.length; i += BATCH) {
+          const batch = allEvents.slice(i, i + BATCH);
+          try {
+            const ollamaRes = await fetch(`${API_BASE_URL}/ollama/analyze`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ events: batch }),
+            });
+            if (ollamaRes.ok) {
+              const analysis = await ollamaRes.json();
+              let estimates: SpendingEstimate[] = [];
+              try {
+                if (analysis.parsed_estimates) {
+                  estimates = JSON.parse(analysis.parsed_estimates).estimates ?? [];
+                } else {
+                  const match = analysis.raw_response?.match(/\{[\s\S]*\}/);
+                  if (match) estimates = JSON.parse(match[0]).estimates ?? [];
+                }
+              } catch (_) {}
+              allEstimates.push(...estimates);
+            }
+          } catch (_) {}
+        }
+        if (allEstimates.length > 0) mergePredictions(allEstimates);
       } catch (_) {}
     };
 
@@ -339,8 +374,8 @@ export default function CalendarScreen() {
                     Events
                   </Text>
                   {selectedEvents.map((item, i) => {
-                    const mediumAmt = selectedDate
-                      ? predictedByEventTitle[`${selectedDate}|${item.title}`]
+                    const pred = selectedDate
+                      ? predictedByEventKey[`${selectedDate}|${item.title}`]
                       : undefined;
                     return (
                       <View key={item.id}>
@@ -362,10 +397,14 @@ export default function CalendarScreen() {
                             )}
                           </View>
                           <View style={styles.eventDot} />
-                          <Text style={styles.eventTitle} numberOfLines={2}>{item.title}</Text>
-                          {mediumAmt != null && mediumAmt > 0 && (
-                            <Text style={styles.eventEstimate}>${mediumAmt.toFixed(2)}</Text>
-                          )}
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.eventTitle} numberOfLines={2}>{item.title}</Text>
+                            {pred && pred.amount > 0 && (
+                              <Text style={styles.eventEstimate}>
+                                ${pred.amount.toFixed(2)} · {pred.description}
+                              </Text>
+                            )}
+                          </View>
                         </View>
                         {i < selectedEvents.length - 1 && <View style={styles.eventDivider} />}
                       </View>
@@ -568,10 +607,10 @@ const styles = StyleSheet.create({
     color: '#1e1d19',
   },
   eventEstimate: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: DARK_GREEN,
-    marginLeft: 4,
+    marginTop: 2,
   },
   dayTotalText: {
     fontSize: 11,

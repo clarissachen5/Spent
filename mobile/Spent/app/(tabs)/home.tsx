@@ -79,7 +79,7 @@ function getHeatmapColor(dollars: number): string {
 export default function HomeScreen() {
   const { top } = useSafeAreaInsets();
   const { token: paramToken, checkIn } = useLocalSearchParams();
-  const { token: contextToken, checkInResults, predictions, setPredictions } = useAuth();
+  const { token: contextToken, checkInResults, predictions, mergePredictions } = useAuth();
   const token = contextToken ?? paramToken;
 
   const categoryTotals = useMemo(() => {
@@ -96,7 +96,7 @@ export default function HomeScreen() {
   const predictedTotalsByDate = useMemo(() => {
     const totals: { [date: string]: number } = {};
     predictions.forEach(p => {
-      totals[p.date] = (totals[p.date] || 0) + (p.medium?.amount ?? 0);
+      totals[p.date] = (totals[p.date] || 0) + Number(p.medium?.amount ?? 0);
     });
     return totals;
   }, [predictions]);
@@ -194,58 +194,53 @@ export default function HomeScreen() {
             date: ev.start?.date?.split('T')[0] ?? ev.start?.dateTime?.split('T')[0],
           }));
 
-        const trimmedEvents = upcomingEvents.slice(0, 5);
-        console.log('[Ollama] events in visible window:', upcomingEvents.length, trimmedEvents);
+        console.log('[Ollama] events in visible window:', upcomingEvents.length);
 
-        if (trimmedEvents.length > 0) {
-          console.log('[Ollama] calling backend at:', `${API_BASE_URL}/ollama/analyze`);
-          try {
-            const ollamaRes = await fetch(`${API_BASE_URL}/ollama/analyze`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ events: trimmedEvents }),
-            });
-            console.log('[Ollama] response status:', ollamaRes.status);
-            if (ollamaRes.ok) {
-              const analysis = await ollamaRes.json();
-              console.log('[Ollama] raw response:', analysis.raw_response);
-
-              // Try parsed_estimates first, fall back to parsing raw_response
-              let estimates: any[] = [];
-              try {
-                if (analysis.parsed_estimates) {
-                  estimates = JSON.parse(analysis.parsed_estimates).estimates ?? [];
-                } else {
-                  const match = analysis.raw_response.match(/\{[\s\S]*\}/);
-                  if (match) estimates = JSON.parse(match[0]).estimates ?? [];
-                }
-              } catch (e) {
-                console.warn('[Ollama] could not parse estimates:', e);
+        if (upcomingEvents.length > 0) {
+          // Batch into groups of 5 so Ollama doesn't truncate
+          const BATCH = 5;
+          const allEstimates: any[] = [];
+          for (let i = 0; i < upcomingEvents.length; i += BATCH) {
+            const batch = upcomingEvents.slice(i, i + BATCH);
+            try {
+              const ollamaRes = await fetch(`${API_BASE_URL}/ollama/analyze`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ events: batch }),
+              });
+              if (ollamaRes.ok) {
+                const analysis = await ollamaRes.json();
+                let estimates: any[] = [];
+                try {
+                  if (analysis.parsed_estimates) {
+                    estimates = JSON.parse(analysis.parsed_estimates).estimates ?? [];
+                  } else {
+                    const match = analysis.raw_response?.match(/\{[\s\S]*\}/);
+                    if (match) estimates = JSON.parse(match[0]).estimates ?? [];
+                  }
+                } catch (_) {}
+                allEstimates.push(...estimates);
               }
-
-              if (estimates.length > 0) {
-                setPredictions(estimates as any);
-                console.log('[Ollama] predictions:', estimates);
-              }
-
-              // Save to Firestore regardless
-              try {
-                const db = getFirestore(app);
-                await addDoc(collection(db, 'spending_analyses'), {
-                  events_input: analysis.events_input,
-                  raw_response: analysis.raw_response,
-                  estimates: estimates.length > 0 ? estimates : null,
-                  created_at: new Date().toISOString(),
-                });
-                console.log('[Firestore] analysis saved');
-              } catch (e) {
-                console.warn('[Firestore] save failed:', e);
-              }
-            } else {
-              console.warn('[Ollama] bad status:', ollamaRes.status);
+            } catch (e) {
+              console.warn('[Ollama] batch failed:', e);
             }
-          } catch (e) {
-            console.warn('[Ollama] analyze failed:', e);
+          }
+
+          if (allEstimates.length > 0) {
+            mergePredictions(allEstimates);
+            console.log('[Ollama] merged', allEstimates.length, 'predictions');
+
+            // Save to Firestore
+            try {
+              const db = getFirestore(app);
+              await addDoc(collection(db, 'spending_analyses'), {
+                estimates: allEstimates,
+                created_at: new Date().toISOString(),
+              });
+              console.log('[Firestore] analysis saved');
+            } catch (e) {
+              console.warn('[Firestore] save failed:', e);
+            }
           }
         } else {
           console.log('[Ollama] no events in visible window — skipping backend call');
@@ -404,9 +399,9 @@ export default function HomeScreen() {
                 <Text style={styles.predictionDate}>{p.date}</Text>
               </View>
               <View style={styles.predictionAmounts}>
-                <Text style={styles.predictionLow}>${p.low?.amount?.toFixed(2)}</Text>
-                <Text style={styles.predictionMed}>${p.medium?.amount?.toFixed(2)}</Text>
-                <Text style={styles.predictionHigh}>${p.high?.amount?.toFixed(2)}</Text>
+                <Text style={styles.predictionLow}>${Number(p.low?.amount ?? 0).toFixed(2)}</Text>
+                <Text style={styles.predictionMed}>${Number(p.medium?.amount ?? 0).toFixed(2)}</Text>
+                <Text style={styles.predictionHigh}>${Number(p.high?.amount ?? 0).toFixed(2)}</Text>
               </View>
             </View>
           ))}

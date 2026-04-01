@@ -23,7 +23,7 @@ interface AuthContextType {
   checkInResults: CheckInResult[];
   addCheckInResult: (result: CheckInResult) => void;
   predictions: SpendingEstimate[];
-  setPredictions: (p: SpendingEstimate[]) => void;
+  mergePredictions: (incoming: SpendingEstimate[]) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -33,7 +33,7 @@ const AuthContext = createContext<AuthContextType>({
   checkInResults: [],
   addCheckInResult: () => {},
   predictions: [],
-  setPredictions: () => {},
+  mergePredictions: () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -45,6 +45,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setCheckInResults(prev => [...prev, result]);
   };
 
+  // Merge incoming predictions, keyed by "date|event" to avoid duplicates
+  const mergePredictions = (incoming: SpendingEstimate[]) => {
+    setPredictions(prev => {
+      const map = new Map(prev.map(p => [`${p.date}|${p.event}`, p]));
+      incoming.forEach(p => map.set(`${p.date}|${p.event}`, p));
+      return Array.from(map.values());
+    });
+  };
+
   const logout = () => {
     setToken(null as any);
     setCheckInResults([]);
@@ -52,7 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ token, setToken, logout, checkInResults, addCheckInResult, predictions, setPredictions }}>
+    <AuthContext.Provider value={{ token, setToken, logout, checkInResults, addCheckInResult, predictions, mergePredictions }}>
       {children}
     </AuthContext.Provider>
   );
