@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import '../services/LocationTracker'; // registers background task before React tree mounts
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import * as firebase from '../src/config/firebase';

@@ -13,11 +13,11 @@ const isExpoGo = Constants.appOwnership === "expo";
 
 export default function SignUp() {
   const router = useRouter();
-  const { setToken } = useAuth();
+  const { setToken, setUserId } = useAuth();
   const [signingIn, setSigningIn] = useState(false);
 
   const redirectUri = isExpoGo
-    ? AuthSession.makeRedirectUri({}) // Defaults to Expo Go proxy URI
+    ? AuthSession.makeRedirectUri({})
     : AuthSession.makeRedirectUri({
         native: "com.googleusercontent.apps.820527515652-3ap73pd55flp82elvtsbpct1rjk23n3o:/oauthredirect",
       });
@@ -30,18 +30,29 @@ export default function SignUp() {
   });
 
   useEffect(() => {
-    console.log("request.url:", request?.url);
-    console.log("response:", response);
-    if (response?.type === "success") {
-      const accessToken = response.authentication?.accessToken;
-      console.log("Google access token:", accessToken); // <-- Print the token
-      if (accessToken) {
-        setToken(accessToken);
-        router.replace({ pathname: '/(tabs)/home', params: { checkIn: Date.now().toString() } });
-      } else {
-        console.warn("Authentication object is missing accessToken.");
-      }
+    if (response?.type !== "success") return;
+
+    const accessToken = response.authentication?.accessToken;
+    if (!accessToken) {
+      console.warn("Authentication object is missing accessToken.");
+      return;
     }
+
+    // Fetch stable Google user ID (sub) from the userinfo endpoint
+    fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then(r => r.json())
+      .then(userInfo => {
+        const googleUserId: string = userInfo.sub;
+        if (!googleUserId) throw new Error("userinfo response missing sub");
+        setUserId(googleUserId);  // persists to AsyncStorage + context
+        setToken(accessToken);
+        router.replace({ pathname: "/(tabs)/home", params: { checkIn: Date.now().toString() } });
+      })
+      .catch(e => {
+        console.error("Failed to fetch Google user info:", e);
+      });
   }, [response]);
 
   const handleGoogleSignIn = async () => {

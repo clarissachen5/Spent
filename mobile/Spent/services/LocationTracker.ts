@@ -12,6 +12,7 @@ const DWELL_RADIUS_M = 50;                 // metres — within this counts as s
 
 const KEY_DWELL = 'spent_dwell_state';
 const KEY_LAST_FLASHCARD = 'spent_last_flashcard_ts';
+const KEY_USER_ID = 'spent_user_id';
 
 interface DwellState {
   latitude: number;
@@ -38,21 +39,46 @@ function inferCategory(types: string[]): string {
   if (types.some(t => ['store', 'shopping_mall', 'clothing_store', 'book_store', 'supermarket', 'convenience_store'].includes(t))) return 'Shopping';
   if (types.some(t => ['movie_theater', 'museum', 'amusement_park', 'gym', 'stadium'].includes(t))) return 'Entertainment';
   if (types.some(t => ['transit_station', 'bus_station', 'train_station', 'subway_station', 'airport'].includes(t))) return 'Transportation';
+  if (types.some(t => ['gas_station', 'pharmacy', 'hardware_store', 'electronics_store'].includes(t))) return 'Other';
   return 'Other';
+}
+
+// ── Persist the current user's ID so the background task can scope Firestore writes ──
+export async function setCurrentUserId(uid: string): Promise<void> {
+  await AsyncStorage.setItem(KEY_USER_ID, uid);
 }
 
 // ── Fetch nearest business via Google Places, then save to Firestore ──────────
 async function createDetectedLocation(lat: number, lng: number, arrivedAt: number) {
+  if (!GOOGLE_MAPS_KEY) {
+    console.warn('[LocationTracker] EXPO_PUBLIC_GOOGLE_MAPS_KEY is not set — skipping place lookup');
+    return;
+  }
+
+  const userId = await AsyncStorage.getItem(KEY_USER_ID);
+  if (!userId) {
+    console.warn('[LocationTracker] No userId in storage — skipping Firestore write');
+    return;
+  }
+
   try {
     const placesResp = await axios.get(
       `https://maps.googleapis.com/maps/api/place/nearbysearch/json` +
-      `?location=${lat},${lng}&rankby=distance&key=${GOOGLE_MAPS_KEY}`
+      `?location=${lat},${lng}&rankby=distance&type=establishment&key=${GOOGLE_MAPS_KEY}`
     );
+
+    const status: string = placesResp.data.status;
+    if (status !== 'OK' && status !== 'ZERO_RESULTS') {
+      console.error('[LocationTracker] Places API error:', status);
+      return;
+    }
+
     const place = placesResp.data.results?.[0];
     if (!place) return;
 
     const db = getFirestore(app);
-    await addDoc(collection(db, 'detected_locations'), {
+    // Write to a per-user subcollection so each user only sees their own data
+    await addDoc(collection(db, 'users', userId, 'detected_locations'), {
       google_place_id: place.place_id,
       place_name:      place.name,
       address:         place.vicinity ?? '',
@@ -75,10 +101,12 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: TaskManager.T
     return;
   }
 
+  if (!data) return;
   const { locations } = data as { locations: Location.LocationObject[] };
-  const loc = locations?.[0];
-  if (!loc) return;
+  if (!locations?.length) return;
 
+  // Use the most recent location in the batch
+  const loc = locations[locations.length - 1];
   const { latitude, longitude } = loc.coords;
   const now = Date.now();
 
