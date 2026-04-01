@@ -79,7 +79,7 @@ function getHeatmapColor(dollars: number): string {
 export default function HomeScreen() {
   const { top } = useSafeAreaInsets();
   const { token: paramToken, checkIn } = useLocalSearchParams();
-  const { token: contextToken, checkInResults, predictions, mergePredictions } = useAuth();
+  const { token: contextToken, checkInResults, predictions, mergePredictions, predictionsLoaded } = useAuth();
   const token = contextToken ?? paramToken;
 
   const categoryTotals = useMemo(() => {
@@ -117,7 +117,7 @@ export default function HomeScreen() {
   const visibleDates = getVisibleDates(dayOffset);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || !predictionsLoaded) return;
 
     // Visible days can straddle months — collect every unique year-month pair
     const needed = Array.from(
@@ -194,14 +194,19 @@ export default function HomeScreen() {
             date: ev.start?.date?.split('T')[0] ?? ev.start?.dateTime?.split('T')[0],
           }));
 
-        console.log('[Ollama] events in visible window:', upcomingEvents.length);
+        // Filter out events already covered by Firebase predictions
+        const coveredKeys = new Set(predictions.map(p => `${p.date}|${p.event}`));
+        const uncoveredEvents = upcomingEvents.filter(
+          e => !coveredKeys.has(`${e.date}|${e.title}`)
+        );
+        console.log('[Ollama] visible:', upcomingEvents.length, 'uncovered:', uncoveredEvents.length);
 
-        if (upcomingEvents.length > 0) {
+        if (uncoveredEvents.length > 0) {
           // Batch into groups of 5 so Ollama doesn't truncate
           const BATCH = 5;
           const allEstimates: any[] = [];
-          for (let i = 0; i < upcomingEvents.length; i += BATCH) {
-            const batch = upcomingEvents.slice(i, i + BATCH);
+          for (let i = 0; i < uncoveredEvents.length; i += BATCH) {
+            const batch = uncoveredEvents.slice(i, i + BATCH);
             try {
               const ollamaRes = await fetch(`${API_BASE_URL}/ollama/analyze`, {
                 method: 'POST',
@@ -251,7 +256,7 @@ export default function HomeScreen() {
     };
 
     fetchNeeded();
-  }, [token, dayOffset]);
+  }, [token, dayOffset, predictionsLoaded]);
 
   return (
     <ScrollView

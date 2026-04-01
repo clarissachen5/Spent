@@ -12,6 +12,8 @@ import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useAuth, SpendingEstimate } from '../../context/AuthContext';
 import { API_BASE_URL } from '../../constants/config';
+import { getFirestore, collection, addDoc } from 'firebase/firestore';
+import { app } from '../../src/config/firebase';
 
 // ── Assets ────────────────────────────────────────────────────────────────────
 const chevronLeft  = require('../../assets/icons/chevronLeft.svg');
@@ -76,7 +78,7 @@ function sortEvents(events: CalendarEvent[]): CalendarEvent[] {
 
 export default function CalendarScreen() {
   const { top }   = useSafeAreaInsets();
-  const { token, checkInResults, predictions, mergePredictions } = useAuth();
+  const { token, checkInResults, predictions, mergePredictions, predictionsLoaded } = useAuth();
 
   const [monthOffset, setMonthOffset]       = useState(0);
   const [eventCounts, setEventCounts]       = useState<{ [dateStr: string]: number }>({});
@@ -102,7 +104,7 @@ export default function CalendarScreen() {
 
   // ── Fetch events for the displayed month ──────────────────────────────────
   useEffect(() => {
-    if (!token) return;
+    if (!token || !predictionsLoaded) return;
     const key = `${year}-${month}`;
     if (fetchedMonths.has(key)) return;
 
@@ -154,41 +156,60 @@ export default function CalendarScreen() {
         setEventsByDate(prev => ({ ...prev, ...byDate }));
         setFetchedMonths(prev => new Set([...prev, key]));
 
-        // Send all month events to Ollama in batches of 5
+        // Only send events not already covered by Firebase predictions
+        const coveredKeys = new Set(predictions.map((p: SpendingEstimate) => `${p.date}|${p.event}`));
         const allEvents = Object.entries(byDate).flatMap(([date, evs]) =>
           evs.map(ev => ({ date, title: ev.title }))
         );
-        const BATCH = 5;
-        const allEstimates: SpendingEstimate[] = [];
-        for (let i = 0; i < allEvents.length; i += BATCH) {
-          const batch = allEvents.slice(i, i + BATCH);
-          try {
-            const ollamaRes = await fetch(`${API_BASE_URL}/ollama/analyze`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ events: batch }),
-            });
-            if (ollamaRes.ok) {
-              const analysis = await ollamaRes.json();
-              let estimates: SpendingEstimate[] = [];
-              try {
-                if (analysis.parsed_estimates) {
-                  estimates = JSON.parse(analysis.parsed_estimates).estimates ?? [];
-                } else {
-                  const match = analysis.raw_response?.match(/\{[\s\S]*\}/);
-                  if (match) estimates = JSON.parse(match[0]).estimates ?? [];
-                }
-              } catch (_) {}
-              allEstimates.push(...estimates);
-            }
-          } catch (_) {}
+        const uncoveredEvents = allEvents.filter(
+          e => !coveredKeys.has(`${e.date}|${e.title}`)
+        );
+        console.log('[Calendar Ollama] total:', allEvents.length, 'uncovered:', uncoveredEvents.length);
+
+        if (uncoveredEvents.length > 0) {
+          const BATCH = 5;
+          const allEstimates: SpendingEstimate[] = [];
+          for (let i = 0; i < uncoveredEvents.length; i += BATCH) {
+            const batch = uncoveredEvents.slice(i, i + BATCH);
+            try {
+              const ollamaRes = await fetch(`${API_BASE_URL}/ollama/analyze`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ events: batch }),
+              });
+              if (ollamaRes.ok) {
+                const analysis = await ollamaRes.json();
+                let estimates: SpendingEstimate[] = [];
+                try {
+                  if (analysis.parsed_estimates) {
+                    estimates = JSON.parse(analysis.parsed_estimates).estimates ?? [];
+                  } else {
+                    const match = analysis.raw_response?.match(/\{[\s\S]*\}/);
+                    if (match) estimates = JSON.parse(match[0]).estimates ?? [];
+                  }
+                } catch (_) {}
+                allEstimates.push(...estimates);
+              }
+            } catch (_) {}
+          }
+          if (allEstimates.length > 0) {
+            mergePredictions(allEstimates);
+            // Save new predictions back to Firestore
+            try {
+              const db = getFirestore(app);
+              await addDoc(collection(db, 'spending_analyses'), {
+                estimates: allEstimates,
+                created_at: new Date().toISOString(),
+              });
+              console.log('[Firestore] saved', allEstimates.length, 'new predictions');
+            } catch (_) {}
+          }
         }
-        if (allEstimates.length > 0) mergePredictions(allEstimates);
       } catch (_) {}
     };
 
     fetchEvents();
-  }, [token, year, month]);
+  }, [token, year, month, predictionsLoaded]);
 
   // ── Build calendar grid ───────────────────────────────────────────────────
   const firstDayOfWeek = new Date(year, month, 1).getDay();
