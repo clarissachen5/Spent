@@ -23,9 +23,9 @@ const GRAY_TEXT  = '#a5a5a5';
 const LIGHT_GRAY = '#eff0f0';
 // ─────────────────────────────────────────────────────────────────────────────
 
-const CATEGORIES = ['Food', 'Shopping', 'Coffee', 'Entertainment', 'Transportation', 'Other'];
+const PRESET_CATEGORIES = ['Food', 'Shopping', 'Coffee', 'Entertainment', 'Transportation', 'Other'];
 
-const GOALS = [
+const PRESET_GOALS = [
   'Saving for a trip',
   'Going out more',
   'Low income period',
@@ -39,11 +39,15 @@ export default function OnboardingScreen() {
   const router   = useRouter();
   const { userProfile, profileLoaded, saveUserProfile } = useAuth();
 
-  const [city,       setCity]       = useState('');
-  const [school,     setSchool]     = useState('');
-  const [categories, setCategories] = useState<string[]>([]);
-  const [goals,      setGoals]      = useState<string[]>([]);
-  const [saving,     setSaving]     = useState(false);
+  const [city,              setCity]              = useState('');
+  const [school,            setSchool]            = useState('');
+  const [allCategories,     setAllCategories]     = useState([...PRESET_CATEGORIES]);
+  const [categories,        setCategories]        = useState<string[]>([]);
+  const [customCatInput,    setCustomCatInput]    = useState('');
+  const [allGoals,          setAllGoals]          = useState([...PRESET_GOALS]);
+  const [goals,             setGoals]             = useState<string[]>([]);
+  const [customGoalInput,   setCustomGoalInput]   = useState('');
+  const [saving,            setSaving]            = useState(false);
 
   // If profile already exists, skip straight to home
   useEffect(() => {
@@ -54,6 +58,22 @@ export default function OnboardingScreen() {
 
   const toggleItem = (list: string[], setList: (v: string[]) => void, item: string) => {
     setList(list.includes(item) ? list.filter(i => i !== item) : [...list, item]);
+  };
+
+  const addCustomCategory = () => {
+    const val = customCatInput.trim();
+    if (!val || allCategories.map(c => c.toLowerCase()).includes(val.toLowerCase())) return;
+    setAllCategories(prev => [...prev, val]);
+    setCategories(prev => [...prev, val]);
+    setCustomCatInput('');
+  };
+
+  const addCustomGoal = () => {
+    const val = customGoalInput.trim();
+    if (!val || allGoals.map(g => g.toLowerCase()).includes(val.toLowerCase())) return;
+    setAllGoals(prev => [...prev, val]);
+    setGoals(prev => [...prev, val]);
+    setCustomGoalInput('');
   };
 
   const handleSubmit = async () => {
@@ -119,7 +139,7 @@ export default function OnboardingScreen() {
         <Text style={styles.sectionLabel}>What do you spend on?</Text>
         <Text style={styles.sectionHint}>Select categories to track on your dashboard.</Text>
         <View style={styles.chipRow}>
-          {CATEGORIES.map(cat => {
+          {allCategories.map(cat => {
             const selected = categories.includes(cat);
             return (
               <TouchableOpacity
@@ -133,12 +153,26 @@ export default function OnboardingScreen() {
             );
           })}
         </View>
+        <View style={styles.addRow}>
+          <TextInput
+            style={styles.addInput}
+            placeholder="Add your own..."
+            placeholderTextColor={GRAY_TEXT}
+            value={customCatInput}
+            onChangeText={setCustomCatInput}
+            onSubmitEditing={addCustomCategory}
+            returnKeyType="done"
+          />
+          <TouchableOpacity style={styles.addBtn} onPress={addCustomCategory} activeOpacity={0.7}>
+            <Text style={styles.addBtnText}>+</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* ── Goals ── */}
         <Text style={[styles.sectionLabel, { marginTop: 28 }]}>What are your spending goals?</Text>
         <Text style={styles.sectionHint}>Select all that apply.</Text>
         <View style={styles.chipRow}>
-          {GOALS.map(goal => {
+          {allGoals.map(goal => {
             const selected = goals.includes(goal);
             return (
               <TouchableOpacity
@@ -151,6 +185,20 @@ export default function OnboardingScreen() {
               </TouchableOpacity>
             );
           })}
+        </View>
+        <View style={styles.addRow}>
+          <TextInput
+            style={styles.addInput}
+            placeholder="Add your own..."
+            placeholderTextColor={GRAY_TEXT}
+            value={customGoalInput}
+            onChangeText={setCustomGoalInput}
+            onSubmitEditing={addCustomGoal}
+            returnKeyType="done"
+          />
+          <TouchableOpacity style={styles.addBtn} onPress={addCustomGoal} activeOpacity={0.7}>
+            <Text style={styles.addBtnText}>+</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Submit ── */}
@@ -247,6 +295,35 @@ const styles = StyleSheet.create({
   },
   chipTextSelected: {
     color: LIME_GREEN,
+  },
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  addInput: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: LIGHT_GRAY,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    fontSize: 13,
+    color: BLACK,
+  },
+  addBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: DARK_GREEN,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addBtnText: {
+    fontSize: 20,
+    color: LIME_GREEN,
+    lineHeight: 22,
   },
   submitButton: {
     marginTop: 36,
