@@ -13,7 +13,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import CheckInModal from '../../components/CheckInModal';
 import { API_BASE_URL } from '../../constants/config';
-import { getFirestore, collection, addDoc, setDoc, doc } from 'firebase/firestore';
+import { getFirestore, setDoc, doc } from 'firebase/firestore';
 import { app } from '../../src/config/firebase';
 
 // ── Figma assets (local SVGs with CSS vars resolved) ─────────────────────────
@@ -79,7 +79,7 @@ function getHeatmapColor(dollars: number): string {
 export default function HomeScreen() {
   const { top } = useSafeAreaInsets();
   const { token: paramToken, checkIn } = useLocalSearchParams();
-  const { token: contextToken, checkInResults, predictions, mergePredictions, predictionsLoaded, storedEventIds, addStoredEventIds } = useAuth();
+  const { token: contextToken, checkInResults, predictions, mergePredictions, predictionsLoaded } = useAuth();
   const token = contextToken ?? paramToken;
 
   const categoryTotals = useMemo(() => {
@@ -186,28 +186,6 @@ export default function HomeScreen() {
         const allItems = results.flatMap(r => r.items);
         console.log('[Ollama] total calendar items fetched:', allItems.length);
 
-        // Save new events to Firestore calendar_events
-        const newItems = allItems.filter((ev: any) => ev.id && !storedEventIds.has(ev.id));
-        if (newItems.length > 0) {
-          try {
-            const db = getFirestore(app);
-            await Promise.all(newItems.map((ev: any) => {
-              const date = ev.start?.date?.split('T')[0] ?? ev.start?.dateTime?.split('T')[0] ?? '';
-              return setDoc(doc(db, 'calendar_events', ev.id), {
-                title: ev.summary ?? 'Untitled',
-                date,
-                startTime: ev.start?.dateTime ?? null,
-                endTime: ev.end?.dateTime ?? null,
-                isAllDay: !!ev.start?.date,
-              });
-            }));
-            addStoredEventIds(newItems.map((ev: any) => ev.id));
-            console.log('[Firestore] saved', newItems.length, 'new calendar events');
-          } catch (e) {
-            console.warn('[Firestore] event save failed:', e);
-          }
-        }
-
         const upcomingEvents = allItems
           .filter((ev: any) => {
             const d = ev.start?.date?.split('T')[0] ?? ev.start?.dateTime?.split('T')[0];
@@ -259,13 +237,20 @@ export default function HomeScreen() {
             mergePredictions(allEstimates);
             console.log('[Ollama] merged', allEstimates.length, 'predictions');
 
-            // Save to Firestore
+            // Save each estimate as its own document
             try {
               const db = getFirestore(app);
-              await addDoc(collection(db, 'spending_analyses'), {
-                estimates: allEstimates,
-                created_at: new Date().toISOString(),
-              });
+              const savedAt = new Date().toISOString();
+              await Promise.all(allEstimates.map((p: any) =>
+                setDoc(doc(db, 'spending_analyses', `${p.date}__${String(p.event).replace(/\//g, '-')}`.slice(0, 500)), {
+                  date:       p.date,
+                  event:      p.event,
+                  low:        p.low,
+                  medium:     p.medium,
+                  high:       p.high,
+                  created_at: savedAt,
+                })
+              ));
               console.log('[Firestore] analysis saved');
             } catch (e) {
               console.warn('[Firestore] save failed:', e);

@@ -12,7 +12,7 @@ import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useAuth, SpendingEstimate } from '../../context/AuthContext';
 import { API_BASE_URL } from '../../constants/config';
-import { getFirestore, collection, addDoc, setDoc, doc } from 'firebase/firestore';
+import { getFirestore, setDoc, doc } from 'firebase/firestore';
 import { app } from '../../src/config/firebase';
 
 // ── Assets ────────────────────────────────────────────────────────────────────
@@ -78,7 +78,7 @@ function sortEvents(events: CalendarEvent[]): CalendarEvent[] {
 
 export default function CalendarScreen() {
   const { top }   = useSafeAreaInsets();
-  const { token, checkInResults, predictions, mergePredictions, predictionsLoaded, storedEventIds, addStoredEventIds } = useAuth();
+  const { token, checkInResults, predictions, mergePredictions, predictionsLoaded } = useAuth();
 
   const [monthOffset, setMonthOffset]       = useState(0);
   const [eventCounts, setEventCounts]       = useState<{ [dateStr: string]: number }>({});
@@ -156,28 +156,6 @@ export default function CalendarScreen() {
         setEventsByDate(prev => ({ ...prev, ...byDate }));
         setFetchedMonths(prev => new Set([...prev, key]));
 
-        // Save new calendar events to Firestore
-        const newItems = (data.items || []).filter((ev: any) => ev.id && !storedEventIds.has(ev.id));
-        if (newItems.length > 0) {
-          try {
-            const db = getFirestore(app);
-            await Promise.all(newItems.map((ev: any) => {
-              const date = ev.start?.date?.split('T')[0] ?? ev.start?.dateTime?.split('T')[0] ?? '';
-              return setDoc(doc(db, 'calendar_events', ev.id), {
-                title: ev.summary ?? 'Untitled',
-                date,
-                startTime: ev.start?.dateTime ?? null,
-                endTime: ev.end?.dateTime ?? null,
-                isAllDay: !!ev.start?.date,
-              });
-            }));
-            addStoredEventIds(newItems.map((ev: any) => ev.id));
-            console.log('[Firestore] saved', newItems.length, 'new calendar events');
-          } catch (e) {
-            console.warn('[Firestore] event save failed:', e);
-          }
-        }
-
         // Only send events not already covered by Firebase predictions
         const coveredKeys = new Set(predictions.map((p: SpendingEstimate) => `${p.date}|${p.event}`));
         const allEvents = Object.entries(byDate).flatMap(([date, evs]) =>
@@ -216,13 +194,20 @@ export default function CalendarScreen() {
           }
           if (allEstimates.length > 0) {
             mergePredictions(allEstimates);
-            // Save new predictions back to Firestore
+            // Save each estimate as its own document
             try {
               const db = getFirestore(app);
-              await addDoc(collection(db, 'spending_analyses'), {
-                estimates: allEstimates,
-                created_at: new Date().toISOString(),
-              });
+              const savedAt = new Date().toISOString();
+              await Promise.all(allEstimates.map((p: SpendingEstimate) =>
+                setDoc(doc(db, 'spending_analyses', `${p.date}__${p.event.replace(/\//g, '-')}`.slice(0, 500)), {
+                  date:       p.date,
+                  event:      p.event,
+                  low:        p.low,
+                  medium:     p.medium,
+                  high:       p.high,
+                  created_at: savedAt,
+                })
+              ));
               console.log('[Firestore] saved', allEstimates.length, 'new predictions');
             } catch (_) {}
           }
