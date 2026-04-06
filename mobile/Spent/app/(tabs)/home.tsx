@@ -83,11 +83,13 @@ export default function HomeScreen() {
   const token = contextToken ?? paramToken;
 
   const categoryTotals = useMemo(() => {
+    const now = new Date();
     const totals: { [key: string]: number } = {};
     checkInResults.forEach(r => {
-      if (r.visited && r.amount != null) {
-        totals[r.category] = (totals[r.category] || 0) + r.amount;
-      }
+      if (!r.visited || r.amount == null) return;
+      const d = r.timestamp instanceof Date ? r.timestamp : new Date(r.timestamp);
+      if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) return;
+      totals[r.category] = (totals[r.category] || 0) + r.amount;
     });
     return totals;
   }, [checkInResults]);

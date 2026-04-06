@@ -92,6 +92,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const addCheckInResult = (result: CheckInResult) => {
     setCheckInResults(prev => [...prev, result]);
+    // Fire-and-forget save to Firestore
+    (async () => {
+      try {
+        const db = getFirestore(app);
+        await addDoc(collection(db, 'check_ins'), {
+          location:  result.location,
+          category:  result.category,
+          visited:   result.visited,
+          amount:    result.amount ?? null,
+          timestamp: result.timestamp.toISOString(),
+        });
+      } catch (e) {
+        console.warn('[Firestore] check-in save failed:', e);
+      }
+    })();
   };
 
   const mergePredictions = (incoming: SpendingEstimate[]) => {
@@ -113,9 +128,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const db = getFirestore(app);
 
       // ── 1. Load existing data from Firestore ────────────────────────────────
-      const [eventsSnap, analysesSnap] = await Promise.all([
+      const [eventsSnap, analysesSnap, checkInsSnap] = await Promise.all([
         getDocs(collection(db, 'calendar_events')),
         getDocs(collection(db, 'spending_analyses')),
+        getDocs(collection(db, 'check_ins')),
       ]);
 
       const existingIds = new Set(eventsSnap.docs.map(d => d.id));
@@ -129,6 +145,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       if (loadedPredictions.length > 0) mergePredictions(loadedPredictions);
       console.log('[Firestore] loaded', loadedPredictions.length, 'saved predictions');
+
+      const loadedCheckIns: CheckInResult[] = [];
+      checkInsSnap.forEach(d => {
+        const data = d.data();
+        loadedCheckIns.push({
+          location:  data.location,
+          category:  data.category,
+          visited:   data.visited,
+          amount:    data.amount ?? undefined,
+          timestamp: new Date(data.timestamp),
+        });
+      });
+      if (loadedCheckIns.length > 0) setCheckInResults(loadedCheckIns);
+      console.log('[Firestore] loaded', loadedCheckIns.length, 'check-ins');
 
       // ── Helper: fetch one month from Google Calendar ─────────────────────
       const fetchMonthItems = async (y: number, m: number): Promise<any[]> => {
