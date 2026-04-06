@@ -170,31 +170,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // while Ollama continues populating predictions in the background
       setPredictionsLoaded(true);
 
-      // ── Helper: fetch one month from Google Calendar ──────────────────────
-      const fetchMonthItems = async (y: number, m: number): Promise<any[]> => {
-        const start = new Date(y, m, 1);
-        const end   = new Date(y, m + 1, 0, 23, 59, 59);
-        const res = await fetch(
-          `https://www.googleapis.com/calendar/v3/calendars/primary/events` +
-          `?timeMin=${start.toISOString()}&timeMax=${end.toISOString()}` +
-          `&singleEvents=true&orderBy=startTime&maxResults=500`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        if (!res.ok) return [];
-        const data = await res.json();
-        return data.items || [];
-      };
+      // Covered keys seeded from Firestore — updated as Ollama responds
+      const coveredKeys = new Set(loadedPredictions.map(p => `${p.date}|${p.event}`));
 
-      // ── Helper: send uncovered events to Ollama, save each batch immediately
-      // coveredKeys is a shared mutable Set to avoid re-processing across months
-      const processItems = async (items: any[], coveredKeys: Set<string>) => {
-        const uncovered = items
-          .map(ev => ({ title: ev.summary ?? 'Untitled', date: getEventDate(ev) }))
+      const now          = new Date();
+      const currentYear  = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const todayMs      = now.getTime();
+
+      // ── 2. Fetch full range, sort by proximity to today, run Ollama ─────────
+      (async () => {
+        const rangeStart = new Date(currentYear, currentMonth - 6, 1);
+        const rangeEnd   = new Date(currentYear, currentMonth + 7, 0, 23, 59, 59);
+
+        let allItems: any[] = [];
+        try {
+          const res = await fetch(
+            `https://www.googleapis.com/calendar/v3/calendars/primary/events` +
+            `?timeMin=${rangeStart.toISOString()}&timeMax=${rangeEnd.toISOString()}` +
+            `&singleEvents=true&orderBy=startTime&maxResults=2500`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (!res.ok) throw new Error('Calendar fetch failed');
+          const data = await res.json();
+          allItems = data.items || [];
+          console.log('[Calendar] fetched', allItems.length, 'events in full range');
+        } catch (e) {
+          console.warn('[Calendar sync] fetch failed:', e);
+          return;
+        }
+
+        // Build full key set for stale-entry cleanup
+        const allCalendarKeys = new Set<string>();
+        allItems.forEach((ev: any) => {
+          const date  = getEventDate(ev);
+          const title = ev.summary ?? 'Untitled';
+          if (date) allCalendarKeys.add(`${date}|${title}`);
+        });
+
+        // Filter uncovered events and sort closest to today first
+        const uncovered = allItems
+          .map((ev: any) => ({ title: ev.summary ?? 'Untitled', date: getEventDate(ev) }))
           .filter(e => e.date && !coveredKeys.has(`${e.date}|${e.title}`));
 
-        if (uncovered.length === 0) return;
+        uncovered.sort((a, b) => {
+          const distA = Math.abs(new Date(a.date + 'T12:00:00').getTime() - todayMs);
+          const distB = Math.abs(new Date(b.date + 'T12:00:00').getTime() - todayMs);
+          return distA - distB;
+        });
 
-        console.log('[Ollama] processing', uncovered.length, 'uncovered events');
+        console.log('[Ollama] processing', uncovered.length, 'uncovered events by proximity');
+
+        // Send to Ollama in batches of 20, save each batch immediately
         const BATCH = 20;
         for (let i = 0; i < uncovered.length; i += BATCH) {
           const batch = uncovered.slice(i, i + BATCH);
@@ -233,48 +260,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           } catch (_) {}
         }
-      };
 
-      // Shared covered set — seeded from Firestore, updated as Ollama responds
-      const coveredKeys = new Set(loadedPredictions.map(p => `${p.date}|${p.event}`));
-
-      const now          = new Date();
-      const currentYear  = now.getFullYear();
-      const currentMonth = now.getMonth();
-
-      // ── 2. All months in the background — current first ────────────────────
-      (async () => {
-        // Current month first, then the rest in order
-        const offsets = [0, ...Array.from({ length: 12 }, (_, i) => i < 6 ? -(i + 1) : (i - 5))];
-        // Collect every date|title pair seen in Google Calendar within the sync range
-        const allCalendarKeys = new Set<string>();
-
-        for (const offset of offsets) {
-          const d = new Date(currentYear, currentMonth + offset, 1);
-          const y = d.getFullYear();
-          const m = d.getMonth();
-          try {
-            const items = await fetchMonthItems(y, m);
-            console.log('[Calendar] sync month', y, m + 1, ':', items.length, 'events');
-            items.forEach((ev: any) => {
-              const date = getEventDate(ev);
-              const title = ev.summary ?? 'Untitled';
-              if (date) allCalendarKeys.add(`${date}|${title}`);
-            });
-            await processItems(items, coveredKeys);
-          } catch (e) {
-            console.warn('[Calendar sync] month failed:', y, m + 1, e);
-          }
-        }
-
-        // ── Delete spending_analyses entries for events no longer in Google Calendar
-        const syncStart = new Date(currentYear, currentMonth - 6, 1).toISOString().split('T')[0];
-        const syncEnd   = new Date(currentYear, currentMonth + 7, 0).toISOString().split('T')[0];
+        // ── Delete spending_analyses entries no longer in Google Calendar ──────
+        const syncStart = rangeStart.toISOString().split('T')[0];
+        const syncEnd   = rangeEnd.toISOString().split('T')[0];
 
         const stale = analysesSnap.docs.filter(d => {
           const data = d.data();
           if (!data.date || !data.event) return false;
-          if (data.date < syncStart || data.date > syncEnd) return false; // outside sync range — don't touch
+          if (data.date < syncStart || data.date > syncEnd) return false;
           return !allCalendarKeys.has(`${data.date}|${data.event}`);
         });
 
@@ -285,7 +279,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.log('[Firestore] deleted', stale.length, 'stale predictions');
         }
 
-        console.log('[Calendar sync] background sync complete');
+        console.log('[Calendar sync] complete');
       })();
     };
 
