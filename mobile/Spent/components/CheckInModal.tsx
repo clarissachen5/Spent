@@ -7,6 +7,10 @@ import {
   TouchableOpacity,
   Dimensions,
   Image as RNImage,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -116,6 +120,169 @@ const LOCATIONS: Location[] = [
     ],
   },
 ];
+
+// ── Missed-expense categories ─────────────────────────────────────────────────
+interface MissedCategory {
+  name:      string;
+  icon:      any;
+  bg:        string;
+  textColor: string;
+  category:  string; // maps to CheckInResult.category
+}
+
+const MISSED_CATEGORIES: MissedCategory[] = [
+  { name: 'Food Delivery',    icon: transportationIcon, bg: '#eefbfd', textColor: '#0a2627', category: 'Transportation' },
+  { name: 'Online Shopping',  icon: shoppingIcon,       bg: '#fff6d6', textColor: '#4f090b', category: 'Shopping'       },
+  { name: 'Concerts',         icon: entertainmentIcon,  bg: '#f8eeff', textColor: '#400981', category: 'Entertainment'  },
+  { name: 'Airfares',         icon: transportationIcon, bg: '#ffeddd', textColor: '#4f090b', category: 'Transportation' },
+  { name: 'Shopping Centers', icon: shoppingIcon,       bg: '#fff6d6', textColor: '#4f090b', category: 'Shopping'       },
+  { name: 'Food Trucks',      icon: foodIcon,           bg: '#eefbfd', textColor: '#0a2627', category: 'Food'           },
+];
+
+// ── MissedExpensesCard ────────────────────────────────────────────────────────
+interface MissedExpensesCardProps {
+  onDone: () => void;
+  onLog:  (name: string, category: string, amount: number) => void;
+}
+
+function MissedExpensesCard({ onDone, onLog }: MissedExpensesCardProps) {
+  type Mode = 'grid' | 'tile' | 'manual';
+  const [mode,        setMode]        = useState<Mode>('grid');
+  const [selected,    setSelected]    = useState<MissedCategory | null>(null);
+  const [amountInput, setAmountInput] = useState('');
+  const [manualName,  setManualName]  = useState('');
+  const [logged,      setLogged]      = useState<string | null>(null);
+
+  const resetToGrid = () => {
+    setMode('grid');
+    setSelected(null);
+    setAmountInput('');
+    setManualName('');
+  };
+
+  const handleTileTap = (cat: MissedCategory) => {
+    setSelected(cat);
+    setAmountInput('');
+    setMode('tile');
+  };
+
+  const handleLog = () => {
+    const amt = parseFloat(amountInput);
+    if (!amt || amt <= 0) return;
+    const name     = mode === 'manual' ? manualName.trim() || 'Manual Entry' : selected!.name;
+    const category = mode === 'manual' ? 'Other'                              : selected!.category;
+    onLog(name, category, amt);
+    setLogged(name);
+    setTimeout(() => { setLogged(null); resetToGrid(); }, 1000);
+  };
+
+  // ── Grid view ──
+  if (mode === 'grid') {
+    const rows: MissedCategory[][] = [];
+    for (let i = 0; i < MISSED_CATEGORIES.length; i += 2) {
+      rows.push(MISSED_CATEGORIES.slice(i, i + 2));
+    }
+    return (
+      <View style={missedStyles.card}>
+        <Text style={missedStyles.heading}>DID SPENT MISS ANYTHING?</Text>
+        <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
+          {rows.map((row, ri) => (
+            <View key={ri} style={missedStyles.tileRow}>
+              {row.map(cat => (
+                <TouchableOpacity
+                  key={cat.name}
+                  style={[missedStyles.tile, { backgroundColor: cat.bg }]}
+                  onPress={() => handleTileTap(cat)}
+                  activeOpacity={0.75}
+                >
+                  <Image source={cat.icon} style={missedStyles.tileIcon} contentFit="contain" />
+                  <Text style={[missedStyles.tileName, { color: cat.textColor }]}>{cat.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ))}
+
+          {/* Manual Input */}
+          <TouchableOpacity
+            style={missedStyles.manualBtn}
+            onPress={() => { setMode('manual'); setAmountInput(''); setManualName(''); }}
+            activeOpacity={0.8}
+          >
+            <View style={missedStyles.manualPlusCircle}>
+              <Text style={missedStyles.manualPlus}>+</Text>
+            </View>
+            <Text style={missedStyles.manualLabel}>Manual Input</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={missedStyles.doneBtn} onPress={onDone} activeOpacity={0.8}>
+            <Text style={missedStyles.doneBtnTxt}>Done</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ── Tile / Manual input view ──
+  const tileColor = selected?.textColor ?? DARK_RED;
+  const tileBg    = selected?.bg        ?? '#ffe6e2';
+
+  return (
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'position' : undefined}>
+      <View style={missedStyles.card}>
+        <TouchableOpacity onPress={resetToGrid} style={missedStyles.backRow} hitSlop={12}>
+          <Text style={missedStyles.backTxt}>← Back</Text>
+        </TouchableOpacity>
+
+        {/* Category display */}
+        {mode === 'tile' && selected ? (
+          <View style={[missedStyles.selectedTile, { backgroundColor: tileBg }]}>
+            <Image source={selected.icon} style={missedStyles.selectedIcon} contentFit="contain" />
+            <Text style={[missedStyles.selectedName, { color: tileColor }]}>{selected.name}</Text>
+          </View>
+        ) : (
+          <TextInput
+            style={missedStyles.nameInput}
+            placeholder="Expense name"
+            placeholderTextColor={GRAY_TEXT}
+            value={manualName}
+            onChangeText={setManualName}
+            autoFocus
+          />
+        )}
+
+        <Text style={missedStyles.amountLabel}>How much did you spend?</Text>
+        <View style={missedStyles.amountRow}>
+          <Text style={missedStyles.dollarSign}>$</Text>
+          <TextInput
+            style={missedStyles.amountInput}
+            placeholder="0.00"
+            placeholderTextColor={GRAY_TEXT}
+            value={amountInput}
+            onChangeText={setAmountInput}
+            keyboardType="decimal-pad"
+            autoFocus={mode === 'tile'}
+          />
+        </View>
+
+        {logged ? (
+          <View style={missedStyles.loggedPill}>
+            <Text style={missedStyles.loggedTxt}>✓ Logged {logged}</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[missedStyles.logBtn, (!amountInput || parseFloat(amountInput) <= 0) && missedStyles.logBtnDisabled]}
+            onPress={handleLog}
+            disabled={!amountInput || parseFloat(amountInput) <= 0}
+            activeOpacity={0.8}
+          >
+            <Text style={missedStyles.logBtnTxt}>Log It</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 function formatCheckInTime(): string {
   const d    = new Date();
@@ -509,6 +676,7 @@ interface CheckInModalProps {
 export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
   const { addCheckInResult } = useAuth();
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [showMissed,   setShowMissed]   = useState(false);
 
   const handleSwipe = (dir: 'left' | 'right', amount?: number) => {
     const location = LOCATIONS[currentIndex];
@@ -521,10 +689,16 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
     });
     const next = currentIndex + 1;
     if (next >= LOCATIONS.length) {
-      setTimeout(() => { setCurrentIndex(0); onClose(); }, 350);
+      setTimeout(() => { setCurrentIndex(0); setShowMissed(true); }, 350);
     } else {
       setCurrentIndex(next);
     }
+  };
+
+  const handleClose = () => {
+    setShowMissed(false);
+    setCurrentIndex(0);
+    onClose();
   };
 
   const remaining = LOCATIONS.slice(currentIndex);
@@ -532,7 +706,7 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
   const collapsed = remaining.slice(1);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
       <View style={styles.overlay}>
 
         <View style={styles.header}>
@@ -542,14 +716,21 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
             <Image source={flameIcon} style={styles.flameIcon} contentFit="contain" />
             <Text style={styles.streakTxt}>3</Text>
           </View>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={12}>
+          <TouchableOpacity onPress={handleClose} style={styles.closeBtn} hitSlop={12}>
             <Text style={styles.closeBtnTxt}>✕</Text>
           </TouchableOpacity>
         </View>
 
         <Text style={styles.subtitle}>Swipe right if you visited, left if not</Text>
 
-        {remaining.length > 0 ? (
+        {showMissed ? (
+          <MissedExpensesCard
+            onDone={handleClose}
+            onLog={(name, category, amount) =>
+              addCheckInResult({ location: name, category, visited: true, amount, timestamp: new Date() })
+            }
+          />
+        ) : remaining.length > 0 ? (
           <View style={[styles.stackContainer, { height: CARD_HEIGHT + collapsed.length * HEADER_H }]}>
             {[...collapsed].reverse().map((loc, i) => {
               const distFromFront = collapsed.length - 1 - i;
@@ -785,4 +966,121 @@ const styles = StyleSheet.create({
   },
   doneTitle: { fontSize: 28, fontWeight: '700', color: DARK_GREEN },
   doneSub:   { fontSize: 14, color: DARK_GREEN, opacity: 0.7 },
+});
+
+// ── MissedExpensesCard styles ─────────────────────────────────────────────────
+const missedStyles = StyleSheet.create({
+  card: {
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
+    borderRadius: CARD_RADIUS,
+    backgroundColor: '#fff',
+    padding: 20,
+    gap: 10,
+    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 }, elevation: 10,
+  },
+  heading: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#1e1d19',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  tileRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+  },
+  tile: {
+    flex: 1,
+    borderRadius: 10,
+    padding: 10,
+    alignItems: 'center',
+    gap: 8,
+  },
+  tileIcon: { width: 20, height: 20 },
+  tileName: { fontSize: 10, textAlign: 'center' },
+
+  // Manual input button
+  manualBtn: {
+    borderWidth: 1,
+    borderColor: DARK_RED,
+    borderRadius: 10,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    gap: 5,
+    marginBottom: 10,
+  },
+  manualPlusCircle: {
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: '#ffe6e2',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  manualPlus:  { fontSize: 14, color: DARK_RED, lineHeight: 18 },
+  manualLabel: { fontSize: 10, color: DARK_RED },
+
+  doneBtn: {
+    borderRadius: 10,
+    backgroundColor: '#f0f0f0',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  doneBtnTxt: { fontSize: 13, fontWeight: '600', color: '#555' },
+
+  // Input mode
+  backRow: { flexDirection: 'row', alignItems: 'center' },
+  backTxt: { fontSize: 13, color: DARK_RED, fontWeight: '600' },
+
+  selectedTile: {
+    borderRadius: 10,
+    padding: 12,
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  selectedIcon: { width: 24, height: 24 },
+  selectedName: { fontSize: 14, fontWeight: '600' },
+
+  nameInput: {
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#1e1d19',
+  },
+  amountLabel: { fontSize: 11, color: GRAY_TEXT, marginTop: 4 },
+  amountRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dollarSign: { fontSize: 22, fontWeight: '600', color: DARK_RED },
+  amountInput: {
+    flex: 1,
+    fontSize: 32,
+    fontWeight: '700',
+    color: DARK_RED,
+    borderBottomWidth: 2,
+    borderBottomColor: DARK_RED,
+    paddingBottom: 4,
+  },
+  logBtn: {
+    marginTop: 12,
+    backgroundColor: DARK_RED,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  logBtnDisabled: { opacity: 0.4 },
+  logBtnTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
+
+  loggedPill: {
+    marginTop: 12,
+    backgroundColor: '#d2f3e2',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  loggedTxt: { fontSize: 14, fontWeight: '600', color: DARK_GREEN },
 });
