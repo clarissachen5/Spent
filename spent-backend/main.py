@@ -40,7 +40,7 @@ Return ONLY a JSON object with this structure, no explanation:
 
     print("Calling Ollama with", len(events), "events...")
     try:
-        result = ollama_client.generate(model="llama3.2:3b", prompt=prompt)
+        result = ollama_client.generate(model="llama3.2:3b", prompt=prompt, options={"num_predict": 8192})
     except Exception as e:
         traceback.print_exc()
         return JSONResponse(status_code=500, content={"error": f"Ollama error: {str(e)}"})
