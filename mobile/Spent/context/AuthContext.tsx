@@ -3,6 +3,13 @@ import { getFirestore, collection, getDocs, setDoc, doc, addDoc, deleteDoc } fro
 import { app } from '../src/config/firebase';
 import { API_BASE_URL } from '../constants/config';
 
+export interface UserProfile {
+  city: string;
+  school: string;
+  categories: string[];
+  goals: string[];
+}
+
 export interface CheckInResult {
   location: string;
   category: string;
@@ -28,6 +35,9 @@ interface AuthContextType {
   predictions: SpendingEstimate[];
   mergePredictions: (incoming: SpendingEstimate[]) => void;
   predictionsLoaded: boolean;
+  userProfile: UserProfile | null;
+  profileLoaded: boolean;
+  saveUserProfile: (profile: UserProfile) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -39,6 +49,9 @@ const AuthContext = createContext<AuthContextType>({
   predictions: [],
   mergePredictions: () => {},
   predictionsLoaded: false,
+  userProfile: null,
+  profileLoaded: false,
+  saveUserProfile: async () => {},
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -59,6 +72,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [checkInResults, setCheckInResults] = useState<CheckInResult[]>([]);
   const [predictions, setPredictions] = useState<SpendingEstimate[]>([]);
   const [predictionsLoaded, setPredictionsLoaded] = useState(false);
+  const [userProfile, setUserProfileState] = useState<UserProfile | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
 
   const addCheckInResult = (result: CheckInResult) => {
     setCheckInResults(prev => [...prev, result]);
@@ -87,6 +102,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const saveUserProfile = async (profile: UserProfile) => {
+    setUserProfileState(profile);
+    const db = getFirestore(app);
+    await setDoc(doc(db, 'user_profile', 'profile'), {
+      ...profile,
+      updated_at: new Date().toISOString(),
+    });
+  };
+
   useEffect(() => {
     if (!token) return;
 
@@ -94,9 +118,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const db = getFirestore(app);
 
       // ── 1. Load saved predictions and check-ins from Firestore ──────────────
-      const [analysesSnap, checkInsSnap] = await Promise.all([
+      const [analysesSnap, checkInsSnap, profileSnap] = await Promise.all([
         getDocs(collection(db, 'spending_analyses')),
         getDocs(collection(db, 'check_ins')),
+        getDocs(collection(db, 'user_profile')),
       ]);
 
       const loadedPredictions: SpendingEstimate[] = [];
@@ -128,6 +153,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       if (loadedCheckIns.length > 0) setCheckInResults(loadedCheckIns);
       console.log('[Firestore] loaded', loadedCheckIns.length, 'check-ins');
+
+      const profileDoc = profileSnap.docs[0];
+      if (profileDoc) {
+        const d = profileDoc.data();
+        setUserProfileState({
+          city:       d.city ?? '',
+          school:     d.school ?? '',
+          categories: d.categories ?? [],
+          goals:      d.goals ?? [],
+        });
+      }
+      setProfileLoaded(true);
 
       // Ungate the UI immediately — screens can now fetch and display events
       // while Ollama continues populating predictions in the background
@@ -260,6 +297,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setCheckInResults([]);
     setPredictions([]);
     setPredictionsLoaded(false);
+    setUserProfileState(null);
+    setProfileLoaded(false);
   };
 
   return (
@@ -267,6 +306,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       token, setToken, logout,
       checkInResults, addCheckInResult,
       predictions, mergePredictions, predictionsLoaded,
+      userProfile, profileLoaded, saveUserProfile,
     }}>
       {children}
     </AuthContext.Provider>

@@ -29,6 +29,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="onboarding"
+        options={{
+          href: null,
+          tabBarStyle: { display: 'none' },
+        }}
+      />
+      <Tabs.Screen
         name="home"
         options={{
           title: 'Home',
