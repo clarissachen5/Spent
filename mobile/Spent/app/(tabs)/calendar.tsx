@@ -10,7 +10,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, SpendingEstimate } from '../../context/AuthContext';
+import { API_BASE_URL } from '../../constants/config';
+import { getFirestore, setDoc, doc } from 'firebase/firestore';
+import { app } from '../../src/config/firebase';
 
 // ── Assets ────────────────────────────────────────────────────────────────────
 const chevronLeft  = require('../../assets/icons/chevronLeft.svg');
@@ -74,13 +77,24 @@ function sortEvents(events: CalendarEvent[]): CalendarEvent[] {
 
 export default function CalendarScreen() {
   const { top }   = useSafeAreaInsets();
-  const { token, checkInResults } = useAuth();
+  const { token, checkInResults, predictions, mergePredictions, predictionsLoaded } = useAuth();
 
   const [monthOffset, setMonthOffset]       = useState(0);
   const [eventCounts, setEventCounts]       = useState<{ [dateStr: string]: number }>({});
   const [eventsByDate, setEventsByDate]     = useState<{ [dateStr: string]: CalendarEvent[] }>({});
   const [fetchedMonths, setFetchedMonths]   = useState<Set<string>>(new Set());
   const [selectedDate, setSelectedDate]     = useState<string | null>(null);
+
+  // Build lookup maps from Ollama predictions
+  const predictedTotalsByDate: { [date: string]: number } = {};
+  const predictedByEventKey: { [key: string]: { amount: number; description: string } } = {};
+  predictions.forEach((p: SpendingEstimate) => {
+    predictedTotalsByDate[p.date] = (predictedTotalsByDate[p.date] || 0) + Number(p.medium?.amount ?? 0);
+    predictedByEventKey[`${p.date}|${p.event}`] = {
+      amount: Number(p.medium?.amount ?? 0),
+      description: p.medium?.description ?? '',
+    };
+  });
 
   const today       = new Date();
   const displayDate = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
@@ -89,7 +103,7 @@ export default function CalendarScreen() {
 
   // ── Fetch events for the displayed month ──────────────────────────────────
   useEffect(() => {
-    if (!token) return;
+    if (!token || !predictionsLoaded) return;
     const key = `${year}-${month}`;
     if (fetchedMonths.has(key)) return;
 
@@ -140,11 +154,68 @@ export default function CalendarScreen() {
         setEventCounts(prev => ({ ...prev, ...counts }));
         setEventsByDate(prev => ({ ...prev, ...byDate }));
         setFetchedMonths(prev => new Set([...prev, key]));
+
+        // Only send events not already covered by Firebase predictions
+        const coveredKeys = new Set(predictions.map((p: SpendingEstimate) => `${p.date}|${p.event}`));
+        const allEvents = Object.entries(byDate).flatMap(([date, evs]) =>
+          evs.map(ev => ({ date, title: ev.title }))
+        );
+        const uncoveredEvents = allEvents.filter(
+          e => !coveredKeys.has(`${e.date}|${e.title}`)
+        );
+        console.log('[Calendar Ollama] total:', allEvents.length, 'uncovered:', uncoveredEvents.length);
+
+        if (uncoveredEvents.length > 0) {
+          const BATCH = 20;
+          const allEstimates: SpendingEstimate[] = [];
+          for (let i = 0; i < uncoveredEvents.length; i += BATCH) {
+            const batch = uncoveredEvents.slice(i, i + BATCH);
+            try {
+              const ollamaRes = await fetch(`${API_BASE_URL}/ollama/analyze`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ events: batch }),
+              });
+              if (ollamaRes.ok) {
+                const analysis = await ollamaRes.json();
+                let estimates: SpendingEstimate[] = [];
+                try {
+                  if (analysis.parsed_estimates) {
+                    estimates = JSON.parse(analysis.parsed_estimates).estimates ?? [];
+                  } else {
+                    const match = analysis.raw_response?.match(/\{[\s\S]*\}/);
+                    if (match) estimates = JSON.parse(match[0]).estimates ?? [];
+                  }
+                } catch (_) {}
+                allEstimates.push(...estimates);
+              }
+            } catch (_) {}
+          }
+          if (allEstimates.length > 0) {
+            mergePredictions(allEstimates);
+            // Save each estimate as its own document
+            try {
+              const db = getFirestore(app);
+              const savedAt = new Date().toISOString();
+              await Promise.all(allEstimates.map((p: SpendingEstimate) =>
+                setDoc(doc(db, 'spending_analyses', `${p.date}__${p.event.replace(/\//g, '-')}`.slice(0, 500)), {
+                  date:       p.date,
+                  event:      p.event,
+                  low:        p.low,
+                  medium:     p.medium,
+                  high:       p.high,
+                  created_at: savedAt,
+                })
+              ));
+              console.log('[Firestore] saved', allEstimates.length, 'new predictions');
+            } catch (_) {}
+          }
+        }
       } catch (_) {}
     };
 
     fetchEvents();
-  }, [token, year, month]);
+  }, [token, year, month, predictionsLoaded]);
 
   // ── Build calendar grid ───────────────────────────────────────────────────
   const firstDayOfWeek = new Date(year, month, 1).getDay();
@@ -228,7 +299,7 @@ export default function CalendarScreen() {
                 if (!day) return <View key={di} style={styles.dayCell} />;
 
                 const dateStr = toDateStr(year, month, day);
-                const count   = eventCounts[dateStr] || 0;
+                const dollars = predictedTotalsByDate[dateStr] || 0;
                 const isToday =
                   day === today.getDate() &&
                   month === today.getMonth() &&
@@ -331,11 +402,18 @@ export default function CalendarScreen() {
       {selectedDate && (
         <View style={styles.eventsPanel}>
           <View style={styles.eventsPanelHeader}>
-            <Text style={styles.eventsPanelTitle}>
-              {selectedDay
-                ? `${DAY_NAMES[selectedDay.getDay()]}, ${MONTH_NAMES[selectedDay.getMonth()]} ${selectedDay.getDate()}`
-                : ''}
-            </Text>
+            <View>
+              <Text style={styles.eventsPanelTitle}>
+                {selectedDay
+                  ? `${DAY_NAMES[selectedDay.getDay()]}, ${MONTH_NAMES[selectedDay.getMonth()]} ${selectedDay.getDate()}`
+                  : ''}
+              </Text>
+              {selectedDate && predictedTotalsByDate[selectedDate] > 0 && (
+                <Text style={styles.dayTotalText}>
+                  Est. total: ${predictedTotalsByDate[selectedDate].toFixed(2)}
+                </Text>
+              )}
+            </View>
             <TouchableOpacity onPress={() => setSelectedDate(null)} hitSlop={12}>
               <Text style={styles.closeBtn}>✕</Text>
             </TouchableOpacity>
@@ -373,31 +451,43 @@ export default function CalendarScreen() {
                   <Text style={[styles.sectionLabel, selectedCheckIns.length > 0 && { marginTop: 14 }]}>
                     Events
                   </Text>
-                  {selectedEvents.map((item, i) => (
-                    <View key={item.id}>
-                      <View style={styles.eventRow}>
-                        <View style={styles.eventTimePart}>
-                          {item.isAllDay ? (
-                            <Text style={styles.allDayBadge}>All day</Text>
-                          ) : (
-                            <>
-                              <Text style={styles.eventTime}>
-                                {item.startTime ? formatTime(item.startTime) : '—'}
-                              </Text>
-                              {item.endTime && (
-                                <Text style={styles.eventTimeEnd}>
-                                  {formatTime(item.endTime)}
+                  {selectedEvents.map((item, i) => {
+                    const pred = selectedDate
+                      ? predictedByEventKey[`${selectedDate}|${item.title}`]
+                      : undefined;
+                    return (
+                      <View key={item.id}>
+                        <View style={styles.eventRow}>
+                          <View style={styles.eventTimePart}>
+                            {item.isAllDay ? (
+                              <Text style={styles.allDayBadge}>All day</Text>
+                            ) : (
+                              <>
+                                <Text style={styles.eventTime}>
+                                  {item.startTime ? formatTime(item.startTime) : '—'}
                                 </Text>
-                              )}
-                            </>
-                          )}
+                                {item.endTime && (
+                                  <Text style={styles.eventTimeEnd}>
+                                    {formatTime(item.endTime)}
+                                  </Text>
+                                )}
+                              </>
+                            )}
+                          </View>
+                          <View style={styles.eventDot} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.eventTitle} numberOfLines={2}>{item.title}</Text>
+                            {pred && pred.amount > 0 && (
+                              <Text style={styles.eventEstimate}>
+                                ${pred.amount.toFixed(2)} · {pred.description}
+                              </Text>
+                            )}
+                          </View>
                         </View>
-                        <View style={styles.eventDot} />
-                        <Text style={styles.eventTitle} numberOfLines={2}>{item.title}</Text>
+                        {i < selectedEvents.length - 1 && <View style={styles.eventDivider} />}
                       </View>
-                      {i < selectedEvents.length - 1 && <View style={styles.eventDivider} />}
-                    </View>
-                  ))}
+                    );
+                  })}
                 </>
               )}
 
@@ -591,6 +681,18 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     color: '#1e1d19',
+  },
+  eventEstimate: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: DARK_GREEN,
+    marginTop: 2,
+  },
+  dayTotalText: {
+    fontSize: 11,
+    color: DARK_GREEN,
+    fontWeight: '600',
+    marginTop: 2,
   },
   eventDivider: {
     height: StyleSheet.hairlineWidth,

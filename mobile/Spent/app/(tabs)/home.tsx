@@ -12,6 +12,9 @@ import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import CheckInModal from '../../components/CheckInModal';
+import { API_BASE_URL } from '../../constants/config';
+import { getFirestore, setDoc, doc } from 'firebase/firestore';
+import { app } from '../../src/config/firebase';
 
 // ── Figma assets (local SVGs with CSS vars resolved) ─────────────────────────
 const chevronLeft        = require('../../assets/icons/chevronLeft.svg');
@@ -76,18 +79,30 @@ function getHeatmapColor(count: number): string {
 export default function HomeScreen() {
   const { top } = useSafeAreaInsets();
   const { token: paramToken, checkIn } = useLocalSearchParams();
-  const { token: contextToken, checkInResults } = useAuth();
+  const { token: contextToken, checkInResults, predictions, mergePredictions, predictionsLoaded } = useAuth();
   const token = contextToken ?? paramToken;
 
   const categoryTotals = useMemo(() => {
+    const now = new Date();
     const totals: { [key: string]: number } = {};
     checkInResults.forEach(r => {
-      if (r.visited && r.amount != null) {
-        totals[r.category] = (totals[r.category] || 0) + r.amount;
-      }
+      if (!r.visited || r.amount == null) return;
+      const d = r.timestamp instanceof Date ? r.timestamp : new Date(r.timestamp);
+      if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) return;
+      totals[r.category] = (totals[r.category] || 0) + r.amount;
     });
     return totals;
   }, [checkInResults]);
+
+  // Sum medium predicted spend per day
+  const predictedTotalsByDate = useMemo(() => {
+    const totals: { [date: string]: number } = {};
+    predictions.forEach(p => {
+      totals[p.date] = (totals[p.date] || 0) + Number(p.medium?.amount ?? 0);
+    });
+    return totals;
+  }, [predictions]);
+
   const totalSaved = 362;
   const streak = 3;
   const [dayOffset, setDayOffset] = useState(0);
@@ -104,7 +119,7 @@ export default function HomeScreen() {
   const visibleDates = getVisibleDates(dayOffset);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || !predictionsLoaded) return;
 
     // Visible days can straddle months — collect every unique year-month pair
     const needed = Array.from(
@@ -148,7 +163,8 @@ export default function HomeScreen() {
       );
       const data = await response.json();
       if (!response.ok) throw new Error('Failed to fetch events');
-      return parseEvents(data.items || []);
+      const items = data.items || [];
+      return { counts: parseEvents(items), items };
     };
 
     const fetchNeeded = async () => {
@@ -159,16 +175,97 @@ export default function HomeScreen() {
             return fetchMonth(year, month);
           })
         );
-        const merged = Object.assign({}, ...results);
-        setEventCounts(prev => ({ ...prev, ...merged }));
+        const mergedCounts = Object.assign({}, ...results.map(r => r.counts));
+        setEventCounts(prev => ({ ...prev, ...mergedCounts }));
         setFetchedMonths(prev => new Set([...prev, ...needed]));
-      } catch (_) {
-        // silently fail
+
+        // Collect upcoming events (within visible window) and send to backend
+        const visibleDateStrs = new Set(visibleDates.map(toDateStr));
+        console.log('[Ollama] visible date range:', [...visibleDateStrs]);
+
+        const allItems = results.flatMap(r => r.items);
+        console.log('[Ollama] total calendar items fetched:', allItems.length);
+
+        const upcomingEvents = allItems
+          .filter((ev: any) => {
+            const d = ev.start?.date?.split('T')[0] ?? ev.start?.dateTime?.split('T')[0];
+            return d && visibleDateStrs.has(d);
+          })
+          .map((ev: any) => ({
+            title: ev.summary ?? 'Untitled',
+            date: ev.start?.date?.split('T')[0] ?? ev.start?.dateTime?.split('T')[0],
+          }));
+
+        // Filter out events already covered by Firebase predictions
+        const coveredKeys = new Set(predictions.map(p => `${p.date}|${p.event}`));
+        const uncoveredEvents = upcomingEvents.filter(
+          e => !coveredKeys.has(`${e.date}|${e.title}`)
+        );
+        console.log('[Ollama] visible:', upcomingEvents.length, 'uncovered:', uncoveredEvents.length);
+
+        if (uncoveredEvents.length > 0) {
+          // Batch into groups of 5 so Ollama doesn't truncate
+          const BATCH = 20;
+          const allEstimates: any[] = [];
+          for (let i = 0; i < uncoveredEvents.length; i += BATCH) {
+            const batch = uncoveredEvents.slice(i, i + BATCH);
+            try {
+              const ollamaRes = await fetch(`${API_BASE_URL}/ollama/analyze`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ events: batch }),
+              });
+              if (ollamaRes.ok) {
+                const analysis = await ollamaRes.json();
+                let estimates: any[] = [];
+                try {
+                  if (analysis.parsed_estimates) {
+                    estimates = JSON.parse(analysis.parsed_estimates).estimates ?? [];
+                  } else {
+                    const match = analysis.raw_response?.match(/\{[\s\S]*\}/);
+                    if (match) estimates = JSON.parse(match[0]).estimates ?? [];
+                  }
+                } catch (_) {}
+                allEstimates.push(...estimates);
+              }
+            } catch (e) {
+              console.warn('[Ollama] batch failed:', e);
+            }
+          }
+
+          if (allEstimates.length > 0) {
+            mergePredictions(allEstimates);
+            console.log('[Ollama] merged', allEstimates.length, 'predictions');
+
+            // Save each estimate as its own document
+            try {
+              const db = getFirestore(app);
+              const savedAt = new Date().toISOString();
+              await Promise.all(allEstimates.map((p: any) =>
+                setDoc(doc(db, 'spending_analyses', `${p.date}__${String(p.event).replace(/\//g, '-')}`.slice(0, 500)), {
+                  date:       p.date,
+                  event:      p.event,
+                  low:        p.low,
+                  medium:     p.medium,
+                  high:       p.high,
+                  created_at: savedAt,
+                })
+              ));
+              console.log('[Firestore] analysis saved');
+            } catch (e) {
+              console.warn('[Firestore] save failed:', e);
+            }
+          }
+        } else {
+          console.log('[Ollama] no events in visible window — skipping backend call');
+        }
+      } catch (e) {
+        console.warn('[fetchNeeded] error:', e);
       }
     };
 
     fetchNeeded();
-  }, [token, dayOffset]);
+  }, [token, dayOffset, predictionsLoaded]);
 
   return (
     <ScrollView
@@ -203,11 +300,11 @@ export default function HomeScreen() {
         }>
           <View style={styles.weekRow}>
             {visibleDates.map((date, i) => {
-              const count = eventCounts[toDateStr(date)] || 0;
+              const dollars = predictedTotalsByDate[toDateStr(date)] || 0;
               return (
                 <View key={i} style={styles.dayCard}>
                   <Text style={styles.dayLabel}>{DAY_NAMES[date.getDay()]}</Text>
-                  <View style={[styles.dayCircle, { backgroundColor: getHeatmapColor(count) }]}>
+                  <View style={[styles.dayCircle, { backgroundColor: getHeatmapColor(dollars) }]}>
                     <Text style={styles.dayNumber}>{date.getDate()}</Text>
                   </View>
                 </View>
@@ -305,6 +402,26 @@ export default function HomeScreen() {
         <Image source={calendarIcon} style={styles.calendarIconImg} contentFit="contain" />
         <Text style={styles.sectionTitle}>Upcoming Expenses</Text>
       </View>
+
+      {/* ── Ollama predictions ── */}
+      {predictions.length > 0 && (
+        <View style={styles.predictionsCard}>
+          {predictions.map((p, i) => (
+            <View key={i} style={[styles.predictionRow, i < predictions.length - 1 && styles.categoryDivider]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.predictionEvent}>{p.event}</Text>
+                <Text style={styles.predictionDate}>{p.date}</Text>
+              </View>
+              <View style={styles.predictionAmounts}>
+                <Text style={styles.predictionLow}>${Number(p.low?.amount ?? 0).toFixed(2)}</Text>
+                <Text style={styles.predictionMed}>${Number(p.medium?.amount ?? 0).toFixed(2)}</Text>
+                <Text style={styles.predictionHigh}>${Number(p.high?.amount ?? 0).toFixed(2)}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
       <CheckInModal
         visible={checkInVisible}
         onClose={() => setCheckInVisible(false)}
@@ -580,6 +697,48 @@ const styles = StyleSheet.create({
   budgetMarkerImg: {
     width: 1,
     height: 21.5,
+  },
+  predictionsCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
+    gap: 7,
+  },
+  predictionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  predictionEvent: {
+    fontSize: 12,
+    color: '#1e1d19',
+    fontWeight: '500',
+  },
+  predictionDate: {
+    fontSize: 10,
+    color: '#a5a5a5',
+  },
+  predictionAmounts: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  predictionLow: {
+    fontSize: 11,
+    color: '#0a542f',
+  },
+  predictionMed: {
+    fontSize: 11,
+    color: '#800039',
+  },
+  predictionHigh: {
+    fontSize: 11,
+    color: '#4F090B',
   },
   amountGroup: {
     flexDirection: 'row',

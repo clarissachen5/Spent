@@ -34,37 +34,27 @@ const PRESET_GOALS = [
   'Building an emergency fund',
 ];
 
-export default function SettingsScreen() {
+export default function OnboardingScreen() {
   const { top }  = useSafeAreaInsets();
   const router   = useRouter();
-  const { logout, userProfile, saveUserProfile } = useAuth();
+  const { userProfile, profileLoaded, saveUserProfile } = useAuth();
 
-  const [city,            setCity]            = useState('');
-  const [school,          setSchool]          = useState('');
-  const [allCategories,   setAllCategories]   = useState([...PRESET_CATEGORIES]);
-  const [categories,      setCategories]      = useState<string[]>([]);
-  const [customCatInput,  setCustomCatInput]  = useState('');
-  const [allGoals,        setAllGoals]        = useState([...PRESET_GOALS]);
-  const [goals,           setGoals]           = useState<string[]>([]);
-  const [customGoalInput, setCustomGoalInput] = useState('');
-  const [saving,          setSaving]          = useState(false);
-  const [saved,           setSaved]           = useState(false);
+  const [city,              setCity]              = useState('');
+  const [school,            setSchool]            = useState('');
+  const [allCategories,     setAllCategories]     = useState([...PRESET_CATEGORIES]);
+  const [categories,        setCategories]        = useState<string[]>([]);
+  const [customCatInput,    setCustomCatInput]    = useState('');
+  const [allGoals,          setAllGoals]          = useState([...PRESET_GOALS]);
+  const [goals,             setGoals]             = useState<string[]>([]);
+  const [customGoalInput,   setCustomGoalInput]   = useState('');
+  const [saving,            setSaving]            = useState(false);
 
-  // Populate fields from loaded profile, restoring any custom items
+  // If profile already exists, skip straight to home
   useEffect(() => {
-    if (userProfile) {
-      setCity(userProfile.city);
-      setSchool(userProfile.school);
-
-      const customCats = userProfile.categories.filter(c => !PRESET_CATEGORIES.includes(c));
-      setAllCategories([...PRESET_CATEGORIES, ...customCats]);
-      setCategories(userProfile.categories);
-
-      const customGoals = userProfile.goals.filter(g => !PRESET_GOALS.includes(g));
-      setAllGoals([...PRESET_GOALS, ...customGoals]);
-      setGoals(userProfile.goals);
+    if (profileLoaded && userProfile) {
+      router.replace({ pathname: '/(tabs)/home', params: { checkIn: Date.now().toString() } });
     }
-  }, [userProfile]);
+  }, [profileLoaded, userProfile]);
 
   const toggleItem = (list: string[], setList: (v: string[]) => void, item: string) => {
     setList(list.includes(item) ? list.filter(i => i !== item) : [...list, item]);
@@ -86,23 +76,25 @@ export default function SettingsScreen() {
     setCustomGoalInput('');
   };
 
-  const handleSave = async () => {
+  const handleSubmit = async () => {
     if (!city.trim() || !school.trim()) return;
     setSaving(true);
-    setSaved(false);
     try {
       await saveUserProfile({ city: city.trim(), school: school.trim(), categories, goals });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      router.replace({ pathname: '/(tabs)/home', params: { checkIn: Date.now().toString() } });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    router.replace('/(tabs)/signup');
-  };
+  // Show spinner while we check if profile exists
+  if (!profileLoaded) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={DARK_GREEN} />
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -111,16 +103,18 @@ export default function SettingsScreen() {
     >
       <ScrollView
         style={styles.container}
-        contentContainerStyle={[styles.content, { paddingTop: top + 20 }]}
+        contentContainerStyle={[styles.content, { paddingTop: top + 32 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>Settings</Text>
+        {/* ── Header ── */}
+        <Text style={styles.title}>Welcome to Spent</Text>
+        <Text style={styles.subtitle}>
+          Tell us a bit about yourself so we can personalize your spending insights.
+        </Text>
 
-        {/* ── Profile section ── */}
-        <Text style={styles.sectionHeader}>Profile</Text>
-
-        <Text style={styles.fieldLabel}>City</Text>
+        {/* ── City ── */}
+        <Text style={styles.sectionLabel}>What city do you live in?</Text>
         <TextInput
           style={styles.input}
           placeholder="e.g. Boston"
@@ -130,7 +124,8 @@ export default function SettingsScreen() {
           autoCorrect={false}
         />
 
-        <Text style={styles.fieldLabel}>School</Text>
+        {/* ── School ── */}
+        <Text style={styles.sectionLabel}>Where do you go to school?</Text>
         <TextInput
           style={styles.input}
           placeholder="e.g. Northeastern University"
@@ -140,9 +135,9 @@ export default function SettingsScreen() {
           autoCorrect={false}
         />
 
-        {/* ── Spending categories ── */}
-        <Text style={[styles.fieldLabel, { marginTop: 20 }]}>Spending Categories</Text>
-        <Text style={styles.fieldHint}>Shown as sliders on your dashboard.</Text>
+        {/* ── Categories ── */}
+        <Text style={styles.sectionLabel}>What do you spend on?</Text>
+        <Text style={styles.sectionHint}>Select categories to track on your dashboard.</Text>
         <View style={styles.chipRow}>
           {allCategories.map(cat => {
             const selected = categories.includes(cat);
@@ -173,9 +168,9 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* ── Spending goals ── */}
-        <Text style={[styles.fieldLabel, { marginTop: 20 }]}>Spending Goals</Text>
-        <Text style={styles.fieldHint}>Helps personalize your spending predictions.</Text>
+        {/* ── Goals ── */}
+        <Text style={[styles.sectionLabel, { marginTop: 28 }]}>What are your spending goals?</Text>
+        <Text style={styles.sectionHint}>Select all that apply.</Text>
         <View style={styles.chipRow}>
           {allGoals.map(goal => {
             const selected = goals.includes(goal);
@@ -206,34 +201,33 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* ── Save button ── */}
+        {/* ── Submit ── */}
         <TouchableOpacity
           style={[
-            styles.saveBtn,
-            (!city.trim() || !school.trim() || saving) && styles.btnDisabled,
-            saved && styles.saveBtnConfirmed,
+            styles.submitButton,
+            (!city.trim() || !school.trim() || saving) && styles.submitDisabled,
           ]}
-          onPress={handleSave}
+          onPress={handleSubmit}
           disabled={!city.trim() || !school.trim() || saving}
           activeOpacity={0.8}
         >
           {saving
             ? <ActivityIndicator color={DARK_GREEN} />
-            : <Text style={styles.saveBtnText}>{saved ? 'Saved!' : 'Save Changes'}</Text>
+            : <Text style={styles.submitText}>Get Started</Text>
           }
         </TouchableOpacity>
-
-        {/* ── Logout ── */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
-          <Text style={styles.logoutText}>Log Out</Text>
-        </TouchableOpacity>
-
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
   container: {
     flex: 1,
     backgroundColor: '#fff',
@@ -241,35 +235,30 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 24,
     paddingBottom: 60,
-    gap: 10,
+    gap: 12,
   },
   title: {
     fontSize: 28,
     fontWeight: '700',
     color: DARK_GREEN,
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: GRAY_TEXT,
+    lineHeight: 20,
     marginBottom: 8,
   },
-  sectionHeader: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: GRAY_TEXT,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-    marginTop: 8,
-  },
-  fieldLabel: {
-    fontSize: 14,
+  sectionLabel: {
+    fontSize: 15,
     fontWeight: '600',
     color: BLACK,
-    marginTop: 8,
-    marginBottom: 4,
+    marginTop: 16,
   },
-  fieldHint: {
+  sectionHint: {
     fontSize: 12,
     color: GRAY_TEXT,
-    marginBottom: 6,
-    marginTop: -2,
+    marginBottom: 4,
   },
   input: {
     borderWidth: 1.5,
@@ -285,6 +274,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+    marginTop: 4,
   },
   chip: {
     paddingHorizontal: 14,
@@ -335,34 +325,19 @@ const styles = StyleSheet.create({
     color: LIME_GREEN,
     lineHeight: 22,
   },
-  saveBtn: {
-    marginTop: 28,
+  submitButton: {
+    marginTop: 36,
     backgroundColor: LIME_GREEN,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
   },
-  saveBtnConfirmed: {
-    backgroundColor: MINT,
-  },
-  btnDisabled: {
+  submitDisabled: {
     opacity: 0.5,
   },
-  saveBtnText: {
-    fontSize: 15,
+  submitText: {
+    fontSize: 16,
     fontWeight: '700',
     color: DARK_GREEN,
-  },
-  logoutBtn: {
-    marginTop: 12,
-    backgroundColor: DARK_GREEN,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  logoutText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: LIME_GREEN,
   },
 });
