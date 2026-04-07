@@ -11,7 +11,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.clchen5.spent",
-      "backgroundModes": ["fetch", "location"],
+      "backgroundModes": [
+        "fetch",
+        "location"
+      ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
@@ -37,7 +40,8 @@
         "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION"
-      ]
+      ],
+      "package": "com.clchen5.spent"
     },
     "web": {
       "output": "static",

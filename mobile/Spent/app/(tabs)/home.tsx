@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -15,6 +16,7 @@ import CheckInModal from '../../components/CheckInModal';
 import { API_BASE_URL } from '../../constants/config';
 import { getFirestore, setDoc, doc } from 'firebase/firestore';
 import { app } from '../../src/config/firebase';
+import * as TaskManager from 'expo-task-manager';
 
 // ── Figma assets (local SVGs with CSS vars resolved) ─────────────────────────
 const chevronLeft        = require('../../assets/icons/chevronLeft.svg');
@@ -76,11 +78,25 @@ function getHeatmapColor(count: number): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
+const LOCATION_TASK_NAME = 'spent-background-location';
+
 export default function HomeScreen() {
   const { top } = useSafeAreaInsets();
   const { token: paramToken, checkIn } = useLocalSearchParams();
-  const { token: contextToken, checkInResults, predictions, mergePredictions, predictionsLoaded } = useAuth();
+  const { token: contextToken, checkInResults, predictions, mergePredictions, predictionsLoaded, pendingLocations } = useAuth();
   const token = contextToken ?? paramToken;
+  const [trackingActive, setTrackingActive] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const check = async () => {
+      const active = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK_NAME);
+      setTrackingActive(active);
+    };
+    check();
+    const interval = setInterval(check, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const categoryTotals = useMemo(() => {
     const now = new Date();
@@ -352,6 +368,21 @@ export default function HomeScreen() {
         />
       </View>
 
+      {/* ── Location status ── */}
+      {Platform.OS !== 'web' && (
+        <View style={styles.locationStatus}>
+          <View style={[styles.locationDot, { backgroundColor: trackingActive ? '#22c55e' : '#a5a5a5' }]} />
+          <Text style={styles.locationStatusText}>
+            {trackingActive ? 'Location tracking active' : 'Location tracking inactive'}
+          </Text>
+          {pendingLocations.length > 0 && (
+            <View style={styles.locationBadge}>
+              <Text style={styles.locationBadgeText}>{pendingLocations.length} new</Text>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* ── Your Spending header ── */}
       <View style={styles.sectionRow}>
         <View style={styles.sectionTitleGroup}>
@@ -597,6 +628,38 @@ const styles = StyleSheet.create({
   landscapeImg: {
     width: '100%',
     height: 112,
+  },
+
+  // ── Location status ─────────────────────────────────────────────────────────
+  locationStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  locationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  locationStatusText: {
+    fontSize: 12,
+    color: '#555',
+    flex: 1,
+  },
+  locationBadge: {
+    backgroundColor: LIME_GREEN,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  locationBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: DARK_GREEN,
   },
 
   // ── Section headers ─────────────────────────────────────────────────────────
