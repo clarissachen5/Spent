@@ -127,13 +127,6 @@ const getColor = (count: number) => {
     return `rgb(${intensity}, 0, 0)`;
 };
 
-  const getColor = (count: number) => {
-    if (!count) return "#ffffff";
-
-    const intensity = Math.min(count * 60, 255);
-    return `rgb(${intensity}, 0, 0)`;
-  };
-
   return (
     <View style={styles.container}>
 
@@ -224,7 +217,8 @@ const getColor = (count: number) => {
             })}
             </View>
         ))}
-      </View>
+        </ScrollView>
+    </View>
     </View>
   );
 }

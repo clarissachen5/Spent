@@ -17,6 +17,9 @@ const firebaseConfig = {
 // Initialize Firebase (this part is GOOD)
 export const app = initializeApp(firebaseConfig);
 
+// Firestore instance — used for storing detected locations
+export { getFirestore } from "firebase/firestore";
+
 // ✅ Analytics: WEB ONLY
 export let analytics: any = null;
 
