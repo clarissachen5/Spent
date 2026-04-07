@@ -65,14 +65,14 @@ function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// Green heatmap: $0 = mint, $100+ = dark green
-const HEATMAP_MAX = 100;
-function getHeatmapColor(dollars: number): string {
-  if (!dollars) return '#d2f3e2';
-  const t = Math.min(dollars, HEATMAP_MAX) / HEATMAP_MAX;
-  const r = Math.round(210 - t * (210 - 10));
-  const g = Math.round(243 - t * (243 - 84));
-  const b = Math.round(226 - t * (226 - 47));
+// Green heatmap: no events = mint, more events = lime green
+function getHeatmapColor(count: number): string {
+  if (!count) return '#d2f3e2';
+  const t = Math.min(count, 5) / 5;
+  // interpolate from mint #d2f3e2 → lime green #cdf545
+  const r = Math.round(210 - t * (210 - 205));
+  const g = Math.round(243 - t * (243 - 245));
+  const b = Math.round(226 - t * (226 - 69));
   return `rgb(${r}, ${g}, ${b})`;
 }
 

@@ -38,6 +38,8 @@ interface AuthContextType {
   userProfile: UserProfile | null;
   profileLoaded: boolean;
   saveUserProfile: (profile: UserProfile) => Promise<void>;
+  pendingLocations: DetectedLocation[];
+  markLocationShown: (id: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -52,6 +54,8 @@ const AuthContext = createContext<AuthContextType>({
   userProfile: null,
   profileLoaded: false,
   saveUserProfile: async () => {},
+  pendingLocations: [],
+  markLocationShown: async () => {},
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -74,6 +78,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [predictionsLoaded, setPredictionsLoaded] = useState(false);
   const [userProfile, setUserProfileState] = useState<UserProfile | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const [pendingLocations, setPendingLocations] = useState<DetectedLocation[]>([]);
+
+  // Start background location tracking and fetch pending flashcards on launch
+  useEffect(() => {
+    startLocationTracking().catch(console.error);
+    fetchPendingLocations();
+  }, []);
+
+  async function fetchPendingLocations() {
+    try {
+      const db = getFirestore(app);
+      const q = query(
+        collection(db, 'detected_locations'),
+        where('flashcard_shown', '==', false)
+      );
+      const snapshot = await getDocs(q);
+      const locations: DetectedLocation[] = snapshot.docs.map(d => ({
+        id: d.id,
+        ...(d.data() as Omit<DetectedLocation, 'id'>),
+      }));
+      setPendingLocations(locations);
+    } catch (e) {
+      // Firestore unavailable — CheckInModal falls back to hardcoded locations
+    }
+  }
 
   const addCheckInResult = (result: CheckInResult) => {
     setCheckInResults(prev => [...prev, result]);
@@ -285,6 +314,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     syncOnLogin();
   }, [token]);
+  const markLocationShown = async (id: string) => {
+    try {
+      const db = getFirestore(app);
+      await updateDoc(doc(db, 'detected_locations', id), { flashcard_shown: true });
+    } catch {
+      // best effort
+    }
+    setPendingLocations(prev => prev.filter(l => l.id !== id));
+  };
 
   const logout = () => {
     setToken(null as any);
@@ -302,6 +340,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       predictions, mergePredictions, predictionsLoaded,
       userProfile, profileLoaded, saveUserProfile,
     }}>
+    setPendingLocations([]);
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{ token, setToken, logout, checkInResults, addCheckInResult, pendingLocations, markLocationShown }}
+    >
       {children}
     </AuthContext.Provider>
   );

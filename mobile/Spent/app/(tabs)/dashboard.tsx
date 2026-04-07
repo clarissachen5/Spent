@@ -228,7 +228,8 @@ const getColor = (count: number) => {
             })}
             </View>
         ))}
-      </View>
+        </ScrollView>
+    </View>
     </View>
   );
 }

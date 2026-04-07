@@ -11,11 +11,15 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.clchen5.spent",
+      "backgroundModes": ["fetch", "location"],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Spent tracks your location to detect places you visit and create spending flashcards.",
+        "NSLocationAlwaysUsageDescription": "Spent tracks your location in the background to detect places you visit.",
+        "NSLocationWhenInUseUsageDescription": "Spent uses your location to detect nearby places."
       }
     },
     "android": {
@@ -26,7 +30,14 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
     },
     "web": {
       "output": "static",
@@ -34,6 +45,16 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Spent tracks your location to detect places you visit and create spending flashcards.",
+          "locationAlwaysPermission": "Spent tracks your location in the background to detect places you visit.",
+          "locationWhenInUsePermission": "Spent uses your location to detect nearby places.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
       [
         "expo-splash-screen",
         {

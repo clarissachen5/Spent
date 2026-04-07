@@ -5,7 +5,7 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from db import Base
-from models import Expense
+from models import Expense, DetectedLocation  # noqa: F401
 from alembic import context
 
 load_dotenv()
