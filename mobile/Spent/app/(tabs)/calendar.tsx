@@ -32,6 +32,7 @@ const MONTH_NAMES = [
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const LIME_GREEN = '#cdf545';
 const DARK_TEXT  = '#1e1d19';
+const DARK_GREEN = '#5a8a2a';
 const MINT       = '#d2f3e2';
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -43,11 +44,12 @@ interface CalendarEvent {
   isAllDay:  boolean;
 }
 
-// count 0 → white (ring added in JSX); count 1–5 → transparent lime → full lime
-function getHeatmapColor(count: number): string {
-  if (!count) return 'white';
-  const t = Math.min(count, 5) / 5;
-  const opacity = 0.15 + t * 0.85; // 0.15 → 1.0, all in lime green
+// dollars 0 → lightest lime; HEATMAP_MAX ($100) → full lime
+const HEATMAP_MAX = 100;
+function getHeatmapColor(dollars: number): string {
+  if (!dollars) return 'rgba(205, 245, 69, 0.15)';
+  const t = Math.min(dollars, HEATMAP_MAX) / HEATMAP_MAX;
+  const opacity = 0.15 + t * 0.85;
   return `rgba(205, 245, 69, ${opacity.toFixed(2)})`;
 }
 
@@ -80,7 +82,6 @@ export default function CalendarScreen() {
   const { token, checkInResults, predictions, mergePredictions, predictionsLoaded } = useAuth();
 
   const [monthOffset, setMonthOffset]       = useState(0);
-  const [eventCounts, setEventCounts]       = useState<{ [dateStr: string]: number }>({});
   const [eventsByDate, setEventsByDate]     = useState<{ [dateStr: string]: CalendarEvent[] }>({});
   const [fetchedMonths, setFetchedMonths]   = useState<Set<string>>(new Set());
   const [selectedDate, setSelectedDate]     = useState<string | null>(null);
@@ -120,7 +121,6 @@ export default function CalendarScreen() {
         const data = await res.json();
         if (!res.ok) return;
 
-        const counts: { [dateStr: string]: number }           = {};
         const byDate: { [dateStr: string]: CalendarEvent[] }  = {};
 
         (data.items || []).forEach((event: any) => {
@@ -140,7 +140,6 @@ export default function CalendarScreen() {
 
           if (!dateStr) return;
 
-          counts[dateStr] = (counts[dateStr] || 0) + 1;
           if (!byDate[dateStr]) byDate[dateStr] = [];
           byDate[dateStr].push({
             id:        event.id ?? `${dateStr}-${Math.random()}`,
@@ -151,7 +150,6 @@ export default function CalendarScreen() {
           });
         });
 
-        setEventCounts(prev => ({ ...prev, ...counts }));
         setEventsByDate(prev => ({ ...prev, ...byDate }));
         setFetchedMonths(prev => new Set([...prev, key]));
 
@@ -306,10 +304,10 @@ export default function CalendarScreen() {
                   year === today.getFullYear();
                 const isSelected = selectedDate === dateStr;
 
-                let circleBg     = getHeatmapColor(count);
+                let circleBg     = getHeatmapColor(dollars);
                 let circleBorder: string | undefined;
                 let circleSize   = CELL_SIZE - 4;
-                if (!count)     { circleBorder = LIME_GREEN; }
+                if (!dollars)   { circleBorder = LIME_GREEN; }
                 if (isToday)    { circleBg = 'transparent'; circleBorder = LIME_GREEN; /* size set below */ }
                 if (isSelected) { circleBg = 'rgba(205,245,69,0.18)'; circleBorder = LIME_GREEN; }
 

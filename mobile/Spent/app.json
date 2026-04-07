@@ -16,7 +16,7 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
-        }
+        },
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Spent tracks your location to detect places you visit and create spending flashcards.",
         "NSLocationAlwaysUsageDescription": "Spent tracks your location in the background to detect places you visit.",
         "NSLocationWhenInUseUsageDescription": "Spent uses your location to detect nearby places."
