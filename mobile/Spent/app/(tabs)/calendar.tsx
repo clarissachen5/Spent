@@ -10,7 +10,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, SpendingEstimate } from '../../context/AuthContext';
+import { API_BASE_URL } from '../../constants/config';
+import { getFirestore, setDoc, doc } from 'firebase/firestore';
+import { app } from '../../src/config/firebase';
 
 // ── Assets ────────────────────────────────────────────────────────────────────
 const chevronLeft  = require('../../assets/icons/chevronLeft.svg');
@@ -40,11 +43,12 @@ interface CalendarEvent {
   isAllDay:  boolean;
 }
 
-// count 0 → white (ring added in JSX); count 1–5 → transparent lime → full lime
-function getHeatmapColor(count: number): string {
-  if (!count) return 'white';
-  const t = Math.min(count, 5) / 5;
-  const opacity = 0.15 + t * 0.85; // 0.15 → 1.0, all in lime green
+// dollars 0 → lightest lime; up to HEATMAP_MAX → full lime
+const HEATMAP_MAX = 100;
+function getHeatmapColor(dollars: number): string {
+  if (!dollars) return 'rgba(205, 245, 69, 0.15)';
+  const t = Math.min(dollars, HEATMAP_MAX) / HEATMAP_MAX;
+  const opacity = 0.15 + t * 0.85;
   return `rgba(205, 245, 69, ${opacity.toFixed(2)})`;
 }
 
@@ -74,13 +78,23 @@ function sortEvents(events: CalendarEvent[]): CalendarEvent[] {
 
 export default function CalendarScreen() {
   const { top }   = useSafeAreaInsets();
-  const { token, checkInResults } = useAuth();
+  const { token, checkInResults, predictions, mergePredictions, predictionsLoaded } = useAuth();
 
   const [monthOffset, setMonthOffset]       = useState(0);
-  const [eventCounts, setEventCounts]       = useState<{ [dateStr: string]: number }>({});
   const [eventsByDate, setEventsByDate]     = useState<{ [dateStr: string]: CalendarEvent[] }>({});
   const [fetchedMonths, setFetchedMonths]   = useState<Set<string>>(new Set());
   const [selectedDate, setSelectedDate]     = useState<string | null>(null);
+
+  // Build lookup maps from Ollama predictions
+  const predictedTotalsByDate: { [date: string]: number } = {};
+  const predictedByEventKey: { [key: string]: { amount: number; description: string } } = {};
+  predictions.forEach((p: SpendingEstimate) => {
+    predictedTotalsByDate[p.date] = (predictedTotalsByDate[p.date] || 0) + Number(p.medium?.amount ?? 0);
+    predictedByEventKey[`${p.date}|${p.event}`] = {
+      amount:      Number(p.medium?.amount ?? 0),
+      description: p.medium?.description ?? '',
+    };
+  });
 
   const today       = new Date();
   const displayDate = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
@@ -89,7 +103,7 @@ export default function CalendarScreen() {
 
   // ── Fetch events for the displayed month ──────────────────────────────────
   useEffect(() => {
-    if (!token) return;
+    if (!token || !predictionsLoaded) return;
     const key = `${year}-${month}`;
     if (fetchedMonths.has(key)) return;
 
@@ -137,14 +151,64 @@ export default function CalendarScreen() {
           });
         });
 
-        setEventCounts(prev => ({ ...prev, ...counts }));
         setEventsByDate(prev => ({ ...prev, ...byDate }));
         setFetchedMonths(prev => new Set([...prev, key]));
+
+        // Send uncovered events to Ollama
+        const coveredKeys = new Set(predictions.map((p: SpendingEstimate) => `${p.date}|${p.event}`));
+        const uncoveredEvents = Object.entries(byDate).flatMap(([date, evs]) =>
+          evs.map(ev => ({ date, title: ev.title }))
+        ).filter(e => !coveredKeys.has(`${e.date}|${e.title}`));
+
+        if (uncoveredEvents.length > 0) {
+          const BATCH = 20;
+          const allEstimates: SpendingEstimate[] = [];
+          for (let i = 0; i < uncoveredEvents.length; i += BATCH) {
+            const batch = uncoveredEvents.slice(i, i + BATCH);
+            try {
+              const ollamaRes = await fetch(`${API_BASE_URL}/ollama/analyze`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ events: batch }),
+              });
+              if (ollamaRes.ok) {
+                const analysis = await ollamaRes.json();
+                let estimates: SpendingEstimate[] = [];
+                try {
+                  if (analysis.parsed_estimates) {
+                    estimates = JSON.parse(analysis.parsed_estimates).estimates ?? [];
+                  } else {
+                    const match = analysis.raw_response?.match(/\{[\s\S]*\}/);
+                    if (match) estimates = JSON.parse(match[0]).estimates ?? [];
+                  }
+                } catch (_) {}
+                allEstimates.push(...estimates);
+              }
+            } catch (_) {}
+          }
+          if (allEstimates.length > 0) {
+            mergePredictions(allEstimates);
+            try {
+              const db = getFirestore(app);
+              const savedAt = new Date().toISOString();
+              await Promise.all(allEstimates.map((p: SpendingEstimate) =>
+                setDoc(doc(db, 'spending_analyses', `${p.date}__${p.event.replace(/\//g, '-')}`.slice(0, 500)), {
+                  date:       p.date,
+                  event:      p.event,
+                  low:        p.low,
+                  medium:     p.medium,
+                  high:       p.high,
+                  created_at: savedAt,
+                })
+              ));
+            } catch (_) {}
+          }
+        }
       } catch (_) {}
     };
 
     fetchEvents();
-  }, [token, year, month]);
+  }, [token, year, month, predictionsLoaded]);
 
   // ── Build calendar grid ───────────────────────────────────────────────────
   const firstDayOfWeek = new Date(year, month, 1).getDay();
@@ -228,17 +292,17 @@ export default function CalendarScreen() {
                 if (!day) return <View key={di} style={styles.dayCell} />;
 
                 const dateStr = toDateStr(year, month, day);
-                const count   = eventCounts[dateStr] || 0;
+                const dollars = predictedTotalsByDate[dateStr] || 0;
                 const isToday =
                   day === today.getDate() &&
                   month === today.getMonth() &&
                   year === today.getFullYear();
                 const isSelected = selectedDate === dateStr;
 
-                let circleBg     = getHeatmapColor(count);
+                let circleBg     = getHeatmapColor(dollars);
                 let circleBorder: string | undefined;
                 let circleSize   = CELL_SIZE - 4;
-                if (!count)     { circleBorder = LIME_GREEN; }
+                if (!dollars)   { circleBorder = LIME_GREEN; }
                 if (isToday)    { circleBg = 'transparent'; circleBorder = LIME_GREEN; /* size set below */ }
                 if (isSelected) { circleBg = 'rgba(205,245,69,0.18)'; circleBorder = LIME_GREEN; }
 
@@ -308,17 +372,10 @@ export default function CalendarScreen() {
           {/* Legend */}
           <View style={styles.legend}>
             <Text style={styles.legendLabel}>Less</Text>
-            {[0, 1, 2, 3, 4, 5].map(v => (
+            {[0, 20, 40, 60, 80, 100].map(v => (
               <View
                 key={v}
-                style={[
-                  styles.legendDot,
-                  {
-                    backgroundColor: getHeatmapColor(v),
-                    borderWidth: v === 0 ? 1.5 : 0,
-                    borderColor: v === 0 ? LIME_GREEN : 'transparent',
-                  },
-                ]}
+                style={[styles.legendDot, { backgroundColor: getHeatmapColor(v) }]}
               />
             ))}
             <Text style={styles.legendLabel}>More</Text>
@@ -331,11 +388,18 @@ export default function CalendarScreen() {
       {selectedDate && (
         <View style={styles.eventsPanel}>
           <View style={styles.eventsPanelHeader}>
-            <Text style={styles.eventsPanelTitle}>
-              {selectedDay
-                ? `${DAY_NAMES[selectedDay.getDay()]}, ${MONTH_NAMES[selectedDay.getMonth()]} ${selectedDay.getDate()}`
-                : ''}
-            </Text>
+            <View>
+              <Text style={styles.eventsPanelTitle}>
+                {selectedDay
+                  ? `${DAY_NAMES[selectedDay.getDay()]}, ${MONTH_NAMES[selectedDay.getMonth()]} ${selectedDay.getDate()}`
+                  : ''}
+              </Text>
+              {selectedDate && predictedTotalsByDate[selectedDate] > 0 && (
+                <Text style={styles.dayTotalText}>
+                  Est. total: ${predictedTotalsByDate[selectedDate].toFixed(2)}
+                </Text>
+              )}
+            </View>
             <TouchableOpacity onPress={() => setSelectedDate(null)} hitSlop={12}>
               <Text style={styles.closeBtn}>✕</Text>
             </TouchableOpacity>
@@ -373,31 +437,43 @@ export default function CalendarScreen() {
                   <Text style={[styles.sectionLabel, selectedCheckIns.length > 0 && { marginTop: 14 }]}>
                     Events
                   </Text>
-                  {selectedEvents.map((item, i) => (
-                    <View key={item.id}>
-                      <View style={styles.eventRow}>
-                        <View style={styles.eventTimePart}>
-                          {item.isAllDay ? (
-                            <Text style={styles.allDayBadge}>All day</Text>
-                          ) : (
-                            <>
-                              <Text style={styles.eventTime}>
-                                {item.startTime ? formatTime(item.startTime) : '—'}
-                              </Text>
-                              {item.endTime && (
-                                <Text style={styles.eventTimeEnd}>
-                                  {formatTime(item.endTime)}
+                  {selectedEvents.map((item, i) => {
+                    const pred = selectedDate
+                      ? predictedByEventKey[`${selectedDate}|${item.title}`]
+                      : undefined;
+                    return (
+                      <View key={item.id}>
+                        <View style={styles.eventRow}>
+                          <View style={styles.eventTimePart}>
+                            {item.isAllDay ? (
+                              <Text style={styles.allDayBadge}>All day</Text>
+                            ) : (
+                              <>
+                                <Text style={styles.eventTime}>
+                                  {item.startTime ? formatTime(item.startTime) : '—'}
                                 </Text>
-                              )}
-                            </>
-                          )}
+                                {item.endTime && (
+                                  <Text style={styles.eventTimeEnd}>
+                                    {formatTime(item.endTime)}
+                                  </Text>
+                                )}
+                              </>
+                            )}
+                          </View>
+                          <View style={styles.eventDot} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.eventTitle} numberOfLines={2}>{item.title}</Text>
+                            {pred && pred.amount > 0 && (
+                              <Text style={styles.eventEstimate}>
+                                ${pred.amount.toFixed(2)} · {pred.description}
+                              </Text>
+                            )}
+                          </View>
                         </View>
-                        <View style={styles.eventDot} />
-                        <Text style={styles.eventTitle} numberOfLines={2}>{item.title}</Text>
+                        {i < selectedEvents.length - 1 && <View style={styles.eventDivider} />}
                       </View>
-                      {i < selectedEvents.length - 1 && <View style={styles.eventDivider} />}
-                    </View>
-                  ))}
+                    );
+                  })}
                 </>
               )}
 
@@ -595,5 +671,17 @@ const styles = StyleSheet.create({
   eventDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: '#f0f0f0',
+  },
+  dayTotalText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: LIME_GREEN,
+    marginTop: 2,
+  },
+  eventEstimate: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#5a8a2a',
+    marginTop: 2,
   },
 });
