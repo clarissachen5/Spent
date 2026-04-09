@@ -30,7 +30,9 @@ const MONTH_NAMES = [
 ];
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const DARK_GREEN = '#0a542f';
+const LIME_GREEN = '#cdf545';
+const DARK_TEXT  = '#1e1d19';
+const DARK_GREEN = '#5a8a2a';
 const MINT       = '#d2f3e2';
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -42,14 +44,13 @@ interface CalendarEvent {
   isAllDay:  boolean;
 }
 
+// dollars 0 → lightest lime; HEATMAP_MAX ($100) → full lime
 const HEATMAP_MAX = 100;
 function getHeatmapColor(dollars: number): string {
-  if (!dollars) return MINT;
+  if (!dollars) return 'rgba(205, 245, 69, 0.15)';
   const t = Math.min(dollars, HEATMAP_MAX) / HEATMAP_MAX;
-  const r = Math.round(210 - t * (210 - 10));
-  const g = Math.round(243 - t * (243 - 84));
-  const b = Math.round(226 - t * (226 - 47));
-  return `rgb(${r}, ${g}, ${b})`;
+  const opacity = 0.15 + t * 0.85;
+  return `rgba(205, 245, 69, ${opacity.toFixed(2)})`;
 }
 
 function toDateStr(year: number, month: number, day: number): string {
@@ -85,7 +86,7 @@ export default function CalendarScreen() {
   const [fetchedMonths, setFetchedMonths]   = useState<Set<string>>(new Set());
   const [selectedDate, setSelectedDate]     = useState<string | null>(null);
 
-  // Normalize titles so minor differences (case, whitespace) don't break matching
+  // Normalize event titles so minor differences (case, whitespace) don't break matching
   const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
   // Build lookup maps from Ollama predictions
@@ -93,6 +94,7 @@ export default function CalendarScreen() {
   const predictedByEventKey: { [key: string]: { amount: number; description: string } } = {};
   predictions.forEach((p: SpendingEstimate) => {
     predictedTotalsByDate[p.date] = (predictedTotalsByDate[p.date] || 0) + Number(p.medium?.amount ?? 0);
+    predictedByEventKey[`${p.date}|${norm(p.event)}`] = {
     predictedByEventKey[`${p.date}|${norm(p.event)}`] = {
       amount: Number(p.medium?.amount ?? 0),
       description: p.medium?.description ?? '',
@@ -104,6 +106,122 @@ export default function CalendarScreen() {
   const year        = displayDate.getFullYear();
   const month       = displayDate.getMonth();
 
+  // ── One-time Ollama sync across ±6 months from today ────────────────────
+  useEffect(() => {
+    if (!token || !predictionsLoaded) return;
+
+    const syncOllama = async () => {
+      const now   = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+      const end   = new Date(now.getFullYear(), now.getMonth() + 7, 0, 23, 59, 59);
+
+      let allItems: any[] = [];
+      try {
+        const res = await fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/primary/events` +
+          `?timeMin=${start.toISOString()}&timeMax=${end.toISOString()}` +
+          `&singleEvents=true&orderBy=startTime&maxResults=2500`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const data = await res.json();
+        if (!res.ok) { console.warn('[Calendar OllamaSync] Google error:', data); return; }
+        allItems = data.items || [];
+      } catch (e) {
+        console.warn('[Calendar OllamaSync] fetch failed:', e);
+        return;
+      }
+
+      const coveredKeys = new Set(predictions.map((p: SpendingEstimate) => `${p.date}|${norm(p.event)}`));
+      const allEvents   = allItems.flatMap((event: any) => {
+        const dateStr = event.start?.date ?? event.start?.dateTime?.split('T')[0] ?? '';
+        const title   = event.summary ?? '(No title)';
+        return dateStr ? [{ date: dateStr, title }] : [];
+      });
+
+      const uncovered = allEvents.filter(e => !coveredKeys.has(`${e.date}|${norm(e.title)}`));
+
+      // Anchor sort to the last date that already has a prediction (fall back to today)
+      const anchorDate = predictions.length > 0
+        ? predictions.reduce((best, p) => (p.date > best ? p.date : best), predictions[0].date)
+        : now.toISOString().split('T')[0];
+      const anchorMs = new Date(anchorDate + 'T12:00:00').getTime();
+      uncovered.sort((a, b) => {
+        const distA = Math.abs(new Date(a.date + 'T12:00:00').getTime() - anchorMs);
+        const distB = Math.abs(new Date(b.date + 'T12:00:00').getTime() - anchorMs);
+        return distA - distB;
+      });
+      console.log('[Calendar OllamaSync] uncovered:', uncovered.length, 'events; anchor date:', anchorDate);
+      if (uncovered.length === 0) return;
+
+      const db = getFirestore(app);
+      const BATCH = 20;
+
+      // Process each batch independently — save + update UI immediately when each resolves
+      const processBatch = async (batch: { date: string; title: string }[]) => {
+        try {
+          const ollamaRes = await fetch(`${API_BASE_URL}/ollama/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ events: batch }),
+          });
+          if (!ollamaRes.ok) { console.warn('[OllamaSync] non-ok response', ollamaRes.status); return; }
+          const analysis = await ollamaRes.json();
+          console.log('[OllamaSync] raw analysis keys:', Object.keys(analysis));
+
+          let estimates: SpendingEstimate[] = [];
+          try {
+            if (analysis.parsed_estimates) {
+              const parsed = typeof analysis.parsed_estimates === 'string'
+                ? JSON.parse(analysis.parsed_estimates)
+                : analysis.parsed_estimates;
+              estimates = parsed.estimates ?? (Array.isArray(parsed) ? parsed : []);
+            } else if (analysis.raw_response) {
+              const match = analysis.raw_response.match(/\{[\s\S]*\}/);
+              if (match) {
+                const parsed = JSON.parse(match[0]);
+                estimates = parsed.estimates ?? (Array.isArray(parsed) ? parsed : []);
+              }
+            }
+          } catch (parseErr) {
+            console.warn('[OllamaSync] parse error:', parseErr, 'raw:', JSON.stringify(analysis).slice(0, 300));
+          }
+
+          console.log('[OllamaSync] parsed', estimates.length, 'estimates from batch of', batch.length);
+          if (estimates.length === 0) return;
+
+          // Update calendar UI immediately
+          mergePredictions(estimates);
+          console.log('[OllamaSync] mergePredictions called with', estimates.length, 'estimates');
+
+          // Save to Firestore — await so errors are visible
+          const savedAt = new Date().toISOString();
+          try {
+            await Promise.all(estimates.map((p: SpendingEstimate) =>
+              setDoc(doc(db, 'spending_analyses', `${p.date}__${p.event.replace(/\//g, '-')}`.slice(0, 500)), {
+                date: p.date, event: p.event,
+                low: p.low, medium: p.medium, high: p.high,
+                created_at: savedAt,
+              })
+            ));
+            console.log('[OllamaSync] Firestore saved', estimates.length, 'predictions');
+          } catch (fsErr) {
+            console.warn('[OllamaSync] Firestore save failed:', fsErr);
+          }
+        } catch (e) {
+          console.warn('[OllamaSync] batch failed (backend may be offline):', (e as any)?.message);
+        }
+      };
+
+      // Fire all batches sequentially so Ollama isn't overwhelmed,
+      // but each saves + updates the calendar the moment it completes
+      for (let i = 0; i < uncovered.length; i += BATCH) {
+        await processBatch(uncovered.slice(i, i + BATCH));
+      }
+    };
+
+    syncOllama();
+  }, [token, predictionsLoaded]);  // runs once when ready
+
   // ── Fetch events for the displayed month ──────────────────────────────────
   useEffect(() => {
     if (!token || !predictionsLoaded) return;
@@ -111,107 +229,111 @@ export default function CalendarScreen() {
     if (fetchedMonths.has(key)) return;
 
     const fetchEvents = async () => {
+      // 1. Fetch Google Calendar events for this month
+      const start = new Date(year, month, 1);
+      const end   = new Date(year, month + 1, 0, 23, 59, 59);
+      let items: any[] = [];
       try {
-        const start = new Date(year, month, 1);
-        const end   = new Date(year, month + 1, 0, 23, 59, 59);
-        const res   = await fetch(
+        const res = await fetch(
           `https://www.googleapis.com/calendar/v3/calendars/primary/events` +
           `?timeMin=${start.toISOString()}&timeMax=${end.toISOString()}` +
           `&singleEvents=true&orderBy=startTime`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
         const data = await res.json();
-        if (!res.ok) return;
+        if (!res.ok) { console.warn('[Calendar] Google API error:', data); return; }
+        items = data.items || [];
+      } catch (e) {
+        console.warn('[Calendar] fetch failed:', e);
+        return;
+      }
 
-        const byDate: { [dateStr: string]: CalendarEvent[] }  = {};
+      // 2. Build byDate map
+      const byDate: { [dateStr: string]: CalendarEvent[] } = {};
+      items.forEach((event: any) => {
+        let dateStr  = '';
+        let isAllDay = false;
+        let startTime: string | null = null;
+        let endTime:   string | null = null;
 
-        (data.items || []).forEach((event: any) => {
-          let dateStr  = '';
-          let isAllDay = false;
-          let startTime: string | null = null;
-          let endTime:   string | null = null;
-
-          if (event.start?.date) {
-            dateStr  = /^\d{4}-\d{2}-\d{2}$/.test(event.start.date) ? event.start.date : '';
-            isAllDay = true;
-          } else if (event.start?.dateTime) {
-            dateStr   = event.start.dateTime.split('T')[0];
-            startTime = event.start.dateTime;
-            endTime   = event.end?.dateTime ?? null;
-          }
-
-          if (!dateStr) return;
-
-          if (!byDate[dateStr]) byDate[dateStr] = [];
-          byDate[dateStr].push({
-            id:        event.id ?? `${dateStr}-${Math.random()}`,
-            title:     event.summary ?? '(No title)',
-            startTime,
-            endTime,
-            isAllDay,
-          });
-        });
-
-        setEventsByDate(prev => ({ ...prev, ...byDate }));
-        setFetchedMonths(prev => new Set([...prev, key]));
-
-        // Only send events not already covered by Firebase predictions
-        const coveredKeys = new Set(predictions.map((p: SpendingEstimate) => `${p.date}|${norm(p.event)}`));
-        const allEvents = Object.entries(byDate).flatMap(([date, evs]) =>
-          evs.map(ev => ({ date, title: ev.title }))
-        );
-        const uncoveredEvents = allEvents.filter(
-          e => !coveredKeys.has(`${e.date}|${norm(e.title)}`)
-        );
-        console.log('[Calendar Ollama] total:', allEvents.length, 'uncovered:', uncoveredEvents.length);
-
-        if (uncoveredEvents.length > 0) {
-          const BATCH = 20;
-          const allEstimates: SpendingEstimate[] = [];
-          for (let i = 0; i < uncoveredEvents.length; i += BATCH) {
-            const batch = uncoveredEvents.slice(i, i + BATCH);
-            try {
-              const ollamaRes = await fetch(`${API_BASE_URL}/ollama/analyze`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ events: batch }),
-              });
-              if (ollamaRes.ok) {
-                const analysis = await ollamaRes.json();
-                let estimates: SpendingEstimate[] = [];
-                try {
-                  if (analysis.parsed_estimates) {
-                    estimates = JSON.parse(analysis.parsed_estimates).estimates ?? [];
-                  } else {
-                    const match = analysis.raw_response?.match(/\{[\s\S]*\}/);
-                    if (match) estimates = JSON.parse(match[0]).estimates ?? [];
-                  }
-                } catch (_) {}
-                allEstimates.push(...estimates);
-              }
-            } catch (_) {}
-          }
-          if (allEstimates.length > 0) {
-            mergePredictions(allEstimates);
-            // Save each estimate as its own document
-            try {
-              const db = getFirestore(app);
-              const savedAt = new Date().toISOString();
-              await Promise.all(allEstimates.map((p: SpendingEstimate) =>
-                setDoc(doc(db, 'spending_analyses', `${p.date}__${p.event.replace(/\//g, '-')}`.slice(0, 500)), {
-                  date:       p.date,
-                  event:      p.event,
-                  low:        p.low,
-                  medium:     p.medium,
-                  high:       p.high,
-                  created_at: savedAt,
-                })
-              ));
-              console.log('[Firestore] saved', allEstimates.length, 'new predictions');
-            } catch (_) {}
-          }
+        if (event.start?.date) {
+          dateStr  = /^\d{4}-\d{2}-\d{2}$/.test(event.start.date) ? event.start.date : '';
+          isAllDay = true;
+        } else if (event.start?.dateTime) {
+          dateStr   = event.start.dateTime.split('T')[0];
+          startTime = event.start.dateTime;
+          endTime   = event.end?.dateTime ?? null;
         }
-      } catch (_) {}
+        if (!dateStr) return;
+        if (!byDate[dateStr]) byDate[dateStr] = [];
+        byDate[dateStr].push({
+          id: event.id ?? `${dateStr}-${Math.random()}`,
+          title: event.summary ?? '(No title)',
+          startTime, endTime, isAllDay,
+        });
+      });
+
+      setEventsByDate(prev => ({ ...prev, ...byDate }));
+      setFetchedMonths(prev => new Set([...prev, key]));
+      console.log('[Calendar] loaded', items.length, 'events,', predictions.length, 'predictions in state');
+
+      // 3. Find events not yet covered by spending_analyses (normalize titles)
+      const coveredKeys = new Set(predictions.map((p: SpendingEstimate) => `${p.date}|${norm(p.event)}`));
+      const allEvents   = Object.entries(byDate).flatMap(([date, evs]) =>
+        evs.map(ev => ({ date, title: ev.title }))
+      );
+      const uncovered = allEvents.filter(e => !coveredKeys.has(`${e.date}|${norm(e.title)}`));
+      const todayMs = new Date().getTime();
+      uncovered.sort((a, b) => {
+        const distA = Math.abs(new Date(a.date + 'T12:00:00').getTime() - todayMs);
+        const distB = Math.abs(new Date(b.date + 'T12:00:00').getTime() - todayMs);
+        return distA - distB;
+      });
+      console.log('[Calendar] covered:', allEvents.length - uncovered.length, 'uncovered:', uncovered.length);
+
+      // 4. Send uncovered events to Ollama, save results to Firestore
+      if (uncovered.length === 0) return;
+      const BATCH = 20;
+      const allEstimates: SpendingEstimate[] = [];
+      for (let i = 0; i < uncovered.length; i += BATCH) {
+        const batch = uncovered.slice(i, i + BATCH);
+        try {
+          const ollamaRes = await fetch(`${API_BASE_URL}/ollama/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ events: batch }),
+          });
+          if (!ollamaRes.ok) { console.warn('[Ollama] non-ok response'); continue; }
+          const analysis = await ollamaRes.json();
+          let estimates: SpendingEstimate[] = [];
+          try {
+            estimates = analysis.parsed_estimates
+              ? JSON.parse(analysis.parsed_estimates).estimates ?? []
+              : JSON.parse(analysis.raw_response?.match(/\{[\s\S]*\}/)?.[0] ?? '{}').estimates ?? [];
+          } catch (_) {}
+          allEstimates.push(...estimates);
+        } catch (e) {
+          console.warn('[Ollama] batch failed (backend may be offline):', (e as any)?.message);
+        }
+      }
+
+      if (allEstimates.length > 0) {
+        mergePredictions(allEstimates);
+        try {
+          const db = getFirestore(app);
+          const savedAt = new Date().toISOString();
+          await Promise.all(allEstimates.map((p: SpendingEstimate) =>
+            setDoc(doc(db, 'spending_analyses', `${p.date}__${p.event.replace(/\//g, '-')}`.slice(0, 500)), {
+              date: p.date, event: p.event,
+              low: p.low, medium: p.medium, high: p.high,
+              created_at: savedAt,
+            })
+          ));
+          console.log('[Firestore] saved', allEstimates.length, 'new predictions');
+        } catch (e) {
+          console.warn('[Firestore] save failed:', e);
+        }
+      }
     };
 
     fetchEvents();
@@ -306,6 +428,21 @@ export default function CalendarScreen() {
                   year === today.getFullYear();
                 const isSelected = selectedDate === dateStr;
 
+                let circleBg     = getHeatmapColor(dollars);
+                let circleBorder: string | undefined;
+                let circleSize   = CELL_SIZE - 4;
+                if (!dollars)   { circleBorder = LIME_GREEN; }
+                if (isToday)    { circleBg = 'transparent'; circleBorder = LIME_GREEN; /* size set below */ }
+                if (isSelected) { circleBg = 'rgba(205,245,69,0.18)'; circleBorder = LIME_GREEN; }
+
+                // Sun geometry — smaller circle so rays have room to breathe
+                const TODAY_R   = Math.round((CELL_SIZE - 4) * 0.52);
+                const RAY_LEN   = 7;
+                const RAY_GAP   = 4;
+                const rayRadius = TODAY_R / 2 + RAY_GAP + RAY_LEN / 2;
+                const cx = CELL_SIZE / 2;
+                const cy = CELL_SIZE / 2;
+
                 return (
                   <TouchableOpacity
                     key={di}
@@ -313,22 +450,48 @@ export default function CalendarScreen() {
                     onPress={() => setSelectedDate(isSelected ? null : dateStr)}
                     activeOpacity={0.7}
                   >
+                    {/* Sun rays — only for today */}
+                    {isToday && Array.from({ length: 8 }, (_, i) => {
+                      const rad = (i * 45 * Math.PI) / 180;
+                      const mx  = cx + rayRadius * Math.cos(rad);
+                      const my  = cy + rayRadius * Math.sin(rad);
+                      return (
+                        <View
+                          key={i}
+                          style={{
+                            position: 'absolute',
+                            width: RAY_LEN,
+                            height: 2.5,
+                            borderRadius: 1.5,
+                            backgroundColor: LIME_GREEN,
+                            left: mx - RAY_LEN / 2,
+                            top:  my - 1.25,
+                            transform: [{ rotate: `${i * 45}deg` }],
+                          }}
+                        />
+                      );
+                    })}
+                    {/* Heatmap circle — uniform size (smaller for today) */}
                     <View
                       style={[
                         styles.dayCircle,
-                        { backgroundColor: getHeatmapColor(dollars) },
-                        isToday    && styles.todayRing,
-                        isSelected && styles.selectedRing,
+                        {
+                          backgroundColor: circleBg,
+                          borderWidth:  circleBorder ? 1.5 : 0,
+                          borderColor:  circleBorder ?? 'transparent',
+                          width:        isToday ? TODAY_R : circleSize,
+                          height:       isToday ? TODAY_R : circleSize,
+                          borderRadius: isToday ? TODAY_R / 2 : circleSize / 2,
+                        },
                       ]}
-                    >
-                      <Text style={[
-                        styles.dayNumber,
-                        isToday    && styles.todayNumber,
-                        isSelected && styles.selectedNumber,
-                      ]}>
-                        {day}
-                      </Text>
-                    </View>
+                    />
+                    {/* Day number always visible, centered over the circle */}
+                    <Text style={[
+                      styles.dayNumber,
+                      isSelected && styles.selectedNumber,
+                    ]}>
+                      {day}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
@@ -339,7 +502,17 @@ export default function CalendarScreen() {
           <View style={styles.legend}>
             <Text style={styles.legendLabel}>Less</Text>
             {[0, 1, 2, 3, 4, 5].map(v => (
-              <View key={v} style={[styles.legendDot, { backgroundColor: getHeatmapColor(v) }]} />
+              <View
+                key={v}
+                style={[
+                  styles.legendDot,
+                  {
+                    backgroundColor: getHeatmapColor(v),
+                    borderWidth: v === 0 ? 1.5 : 0,
+                    borderColor: v === 0 ? LIME_GREEN : 'transparent',
+                  },
+                ]}
+              />
             ))}
             <Text style={styles.legendLabel}>More</Text>
           </View>
@@ -470,7 +643,7 @@ const styles = StyleSheet.create({
   pageTitle: {
     fontSize: 24,
     fontWeight: '700',
-    color: DARK_GREEN,
+    color: DARK_TEXT,
   },
 
   calendarCard: {
@@ -495,7 +668,7 @@ const styles = StyleSheet.create({
   monthLabel: {
     fontSize: 17,
     fontWeight: '700',
-    color: DARK_GREEN,
+    color: DARK_TEXT,
   },
 
   // Day headers
@@ -510,26 +683,24 @@ const styles = StyleSheet.create({
 
   // Grid
   weekRow: { flexDirection: 'row', marginBottom: 6 },
-  dayCell: { width: CELL_SIZE, alignItems: 'center' },
-  dayCircle: {
-    width: CELL_SIZE - 4,
-    height: CELL_SIZE - 4,
-    borderRadius: (CELL_SIZE - 4) / 2,
+  dayCell: {
+    width: CELL_SIZE,
+    height: CELL_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  todayRing: {
-    borderWidth: 2,
-    borderColor: DARK_GREEN,
+  dayCircle: {
+    position: 'absolute',
+    width:        CELL_SIZE - 4,
+    height:       CELL_SIZE - 4,
+    borderRadius: (CELL_SIZE - 4) / 2,
   },
   selectedRing: {
     borderWidth: 2,
-    borderColor: DARK_GREEN,
-    backgroundColor: DARK_GREEN,
+    borderColor: LIME_GREEN,
   },
   dayNumber: { fontSize: 11, color: '#1e1d19' },
-  todayNumber: { fontWeight: '700', color: DARK_GREEN },
-  selectedNumber: { fontWeight: '700', color: '#fff' },
+  selectedNumber: { fontWeight: '700', color: DARK_TEXT },
 
   // Legend
   legend: {
@@ -556,7 +727,7 @@ const styles = StyleSheet.create({
   eventsPanelTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: DARK_GREEN,
+    color: DARK_TEXT,
   },
   closeBtn: {
     fontSize: 14,
@@ -584,12 +755,12 @@ const styles = StyleSheet.create({
   checkInAmount: {
     fontSize: 13,
     fontWeight: '700',
-    color: DARK_GREEN,
+    color: DARK_TEXT,
   },
   checkInDot: {
     backgroundColor: MINT,
     borderWidth: 1.5,
-    borderColor: DARK_GREEN,
+    borderColor: LIME_GREEN,
   },
 
   // Event rows
@@ -606,7 +777,7 @@ const styles = StyleSheet.create({
   eventTime: {
     fontSize: 11,
     fontWeight: '600',
-    color: DARK_GREEN,
+    color: DARK_TEXT,
   },
   eventTimeEnd: {
     fontSize: 10,
@@ -616,7 +787,7 @@ const styles = StyleSheet.create({
   allDayBadge: {
     fontSize: 10,
     fontWeight: '600',
-    color: DARK_GREEN,
+    color: DARK_TEXT,
     backgroundColor: MINT,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -626,7 +797,7 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: DARK_GREEN,
+    backgroundColor: LIME_GREEN,
   },
   eventTitle: {
     flex: 1,

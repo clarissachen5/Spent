@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { getFirestore, collection, getDocs, setDoc, doc, addDoc, deleteDoc } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, setDoc, doc, addDoc, deleteDoc, query, where, updateDoc } from 'firebase/firestore';
 import { app } from '../src/config/firebase';
 import { API_BASE_URL } from '../constants/config';
+import { startLocationTracking } from '../services/LocationTracker';
 
 export interface UserProfile {
   city: string;
@@ -26,6 +27,19 @@ export interface SpendingEstimate {
   high:   { amount: number; description: string };
 }
 
+export interface DetectedLocation {
+  id: string;
+  google_place_id: string;
+  place_name: string;
+  address: string;
+  category: string;
+  latitude: number;
+  longitude: number;
+  arrived_at: string;
+  flashcard_shown: boolean;
+  created_at: string;
+}
+
 interface AuthContextType {
   token: string | null;
   setToken: (token: string) => void;
@@ -38,6 +52,8 @@ interface AuthContextType {
   userProfile: UserProfile | null;
   profileLoaded: boolean;
   saveUserProfile: (profile: UserProfile) => Promise<void>;
+  pendingLocations: DetectedLocation[];
+  markLocationShown: (id: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -52,9 +68,9 @@ const AuthContext = createContext<AuthContextType>({
   userProfile: null,
   profileLoaded: false,
   saveUserProfile: async () => {},
+  pendingLocations: [],
+  markLocationShown: async () => {},
 });
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 // Stable Firestore doc ID for a spending estimate (no '/' allowed in IDs)
 function estimateDocId(date: string, event: string): string {
@@ -65,8 +81,6 @@ function getEventDate(ev: any): string {
   return ev.start?.date?.split('T')[0] ?? ev.start?.dateTime?.split('T')[0] ?? '';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [checkInResults, setCheckInResults] = useState<CheckInResult[]>([]);
@@ -74,6 +88,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [predictionsLoaded, setPredictionsLoaded] = useState(false);
   const [userProfile, setUserProfileState] = useState<UserProfile | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const [pendingLocations, setPendingLocations] = useState<DetectedLocation[]>([]);
+
+  // Start background location tracking and fetch pending flashcards on launch
+  useEffect(() => {
+    startLocationTracking().catch(console.error);
+    fetchPendingLocations();
+  }, []);
+
+  async function fetchPendingLocations() {
+    try {
+      const db = getFirestore(app);
+      const q = query(
+        collection(db, 'detected_locations'),
+        where('flashcard_shown', '==', false)
+      );
+      const snapshot = await getDocs(q);
+      const locations: DetectedLocation[] = snapshot.docs.map(d => ({
+        id: d.id,
+        ...(d.data() as Omit<DetectedLocation, 'id'>),
+      }));
+      setPendingLocations(locations);
+    } catch (e) {
+      // Firestore unavailable — CheckInModal falls back to hardcoded locations
+    }
+  }
 
   const addCheckInResult = (result: CheckInResult) => {
     setCheckInResults(prev => [...prev, result]);
@@ -111,13 +150,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const markLocationShown = async (id: string) => {
+    try {
+      const db = getFirestore(app);
+      await updateDoc(doc(db, 'detected_locations', id), { flashcard_shown: true });
+    } catch {
+      // best effort
+    }
+    setPendingLocations(prev => prev.filter(l => l.id !== id));
+  };
+
+  // Load predictions and check-ins from Firestore immediately on mount (no login required)
+  useEffect(() => {
+    const loadFromFirestore = async () => {
+      try {
+        const db = getFirestore(app);
+        const [analysesSnap, checkInsSnap] = await Promise.all([
+          getDocs(collection(db, 'spending_analyses')),
+          getDocs(collection(db, 'check_ins')),
+        ]);
+        const loadedPredictions: SpendingEstimate[] = [];
+        analysesSnap.forEach(d => {
+          const data = d.data();
+          if (data.date && data.event) {
+            loadedPredictions.push({ date: data.date, event: data.event, low: data.low, medium: data.medium, high: data.high });
+          }
+        });
+        if (loadedPredictions.length > 0) mergePredictions(loadedPredictions);
+        console.log('[Firestore] preloaded', loadedPredictions.length, 'predictions on mount');
+
+        const loadedCheckIns: CheckInResult[] = [];
+        checkInsSnap.forEach(d => {
+          const data = d.data();
+          loadedCheckIns.push({ location: data.location, category: data.category, visited: data.visited, amount: data.amount ?? undefined, timestamp: new Date(data.timestamp) });
+        });
+        if (loadedCheckIns.length > 0) setCheckInResults(loadedCheckIns);
+        setPredictionsLoaded(true);
+      } catch (e) {
+        console.warn('[Firestore] preload failed:', e);
+        setPredictionsLoaded(true); // ungate UI even on error
+      }
+    };
+    loadFromFirestore();
+  }, []);
+
+  // Sync predictions, check-ins, and profile from Firestore on login; then run Ollama in background
   useEffect(() => {
     if (!token) return;
 
     const syncOnLogin = async () => {
+      try {
       const db = getFirestore(app);
 
-      // ── 1. Load saved predictions and check-ins from Firestore ──────────────
       const [analysesSnap, checkInsSnap, profileSnap] = await Promise.all([
         getDocs(collection(db, 'spending_analyses')),
         getDocs(collection(db, 'check_ins')),
@@ -165,20 +249,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
       }
       setProfileLoaded(true);
-
-      // Ungate the UI immediately — screens can now fetch and display events
-      // while Ollama continues populating predictions in the background
       setPredictionsLoaded(true);
 
-      // Covered keys seeded from Firestore — updated as Ollama responds
+      // Background: fetch full 13-month range, sort by proximity to today, run Ollama
       const coveredKeys = new Set(loadedPredictions.map(p => `${p.date}|${p.event}`));
-
       const now          = new Date();
       const currentYear  = now.getFullYear();
       const currentMonth = now.getMonth();
       const todayMs      = now.getTime();
 
-      // ── 2. Fetch full range, sort by proximity to today, run Ollama ─────────
       (async () => {
         const rangeStart = new Date(currentYear, currentMonth - 6, 1);
         const rangeEnd   = new Date(currentYear, currentMonth + 7, 0, 23, 59, 59);
@@ -200,7 +279,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        // Build full key set for stale-entry cleanup
         const allCalendarKeys = new Set<string>();
         allItems.forEach((ev: any) => {
           const date  = getEventDate(ev);
@@ -221,7 +299,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         console.log('[Ollama] processing', uncovered.length, 'uncovered events by proximity');
 
-        // Send to Ollama in batches of 20, save each batch immediately
         const BATCH = 20;
         for (let i = 0; i < uncovered.length; i += BATCH) {
           const batch = uncovered.slice(i, i + BATCH);
@@ -261,7 +338,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch (_) {}
         }
 
-        // ── Delete spending_analyses entries no longer in Google Calendar ──────
+        // Delete spending_analyses entries no longer in Google Calendar
         const syncStart = rangeStart.toISOString().split('T')[0];
         const syncEnd   = rangeEnd.toISOString().split('T')[0];
 
@@ -281,6 +358,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         console.log('[Calendar sync] complete');
       })();
+      } catch (e) {
+        console.warn('[syncOnLogin] Firestore load failed:', e);
+        setPredictionsLoaded(true); // ungate UI even if load fails
+      }
     };
 
     syncOnLogin();
@@ -293,6 +374,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setPredictionsLoaded(false);
     setUserProfileState(null);
     setProfileLoaded(false);
+    setPendingLocations([]);
   };
 
   return (
@@ -301,6 +383,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       checkInResults, addCheckInResult,
       predictions, mergePredictions, predictionsLoaded,
       userProfile, profileLoaded, saveUserProfile,
+      pendingLocations, markLocationShown,
     }}>
       {children}
     </AuthContext.Provider>
