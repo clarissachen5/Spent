@@ -81,17 +81,19 @@ export default function CalendarScreen() {
   const { token, checkInResults, predictions, mergePredictions, predictionsLoaded } = useAuth();
 
   const [monthOffset, setMonthOffset]       = useState(0);
-  const [eventCounts, setEventCounts]       = useState<{ [dateStr: string]: number }>({});
   const [eventsByDate, setEventsByDate]     = useState<{ [dateStr: string]: CalendarEvent[] }>({});
   const [fetchedMonths, setFetchedMonths]   = useState<Set<string>>(new Set());
   const [selectedDate, setSelectedDate]     = useState<string | null>(null);
+
+  // Normalize titles so minor differences (case, whitespace) don't break matching
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
   // Build lookup maps from Ollama predictions
   const predictedTotalsByDate: { [date: string]: number } = {};
   const predictedByEventKey: { [key: string]: { amount: number; description: string } } = {};
   predictions.forEach((p: SpendingEstimate) => {
     predictedTotalsByDate[p.date] = (predictedTotalsByDate[p.date] || 0) + Number(p.medium?.amount ?? 0);
-    predictedByEventKey[`${p.date}|${p.event}`] = {
+    predictedByEventKey[`${p.date}|${norm(p.event)}`] = {
       amount: Number(p.medium?.amount ?? 0),
       description: p.medium?.description ?? '',
     };
@@ -121,7 +123,6 @@ export default function CalendarScreen() {
         const data = await res.json();
         if (!res.ok) return;
 
-        const counts: { [dateStr: string]: number }           = {};
         const byDate: { [dateStr: string]: CalendarEvent[] }  = {};
 
         (data.items || []).forEach((event: any) => {
@@ -141,7 +142,6 @@ export default function CalendarScreen() {
 
           if (!dateStr) return;
 
-          counts[dateStr] = (counts[dateStr] || 0) + 1;
           if (!byDate[dateStr]) byDate[dateStr] = [];
           byDate[dateStr].push({
             id:        event.id ?? `${dateStr}-${Math.random()}`,
@@ -152,17 +152,16 @@ export default function CalendarScreen() {
           });
         });
 
-        setEventCounts(prev => ({ ...prev, ...counts }));
         setEventsByDate(prev => ({ ...prev, ...byDate }));
         setFetchedMonths(prev => new Set([...prev, key]));
 
         // Only send events not already covered by Firebase predictions
-        const coveredKeys = new Set(predictions.map((p: SpendingEstimate) => `${p.date}|${p.event}`));
+        const coveredKeys = new Set(predictions.map((p: SpendingEstimate) => `${p.date}|${norm(p.event)}`));
         const allEvents = Object.entries(byDate).flatMap(([date, evs]) =>
           evs.map(ev => ({ date, title: ev.title }))
         );
         const uncoveredEvents = allEvents.filter(
-          e => !coveredKeys.has(`${e.date}|${e.title}`)
+          e => !coveredKeys.has(`${e.date}|${norm(e.title)}`)
         );
         console.log('[Calendar Ollama] total:', allEvents.length, 'uncovered:', uncoveredEvents.length);
 
@@ -403,7 +402,7 @@ export default function CalendarScreen() {
                   </Text>
                   {selectedEvents.map((item, i) => {
                     const pred = selectedDate
-                      ? predictedByEventKey[`${selectedDate}|${item.title}`]
+                      ? predictedByEventKey[`${selectedDate}|${norm(item.title)}`]
                       : undefined;
                     return (
                       <View key={item.id}>

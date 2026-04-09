@@ -26,12 +26,15 @@ import { useAuth } from '../context/AuthContext';
 import { GOOGLE_MAPS_KEY } from '../constants/config';
 
 // ── Local icons ───────────────────────────────────────────────────────────────
-const coffeeIcon      = require('../assets/icons/coffeeIcon.svg');
-const shoppingIcon    = require('../assets/icons/shoppingIcon.svg');
-const foodIcon        = require('../assets/icons/foodIcon.svg');
-const clipboardIcon   = require('../assets/icons/clipboardIcon.svg');
-const flameIcon       = require('../assets/icons/flameIcon.svg');
-const moneySmallIcon  = require('../assets/icons/moneySmall.svg');
+const coffeeIcon          = require('../assets/icons/coffeeIcon.svg');
+const shoppingIcon        = require('../assets/icons/shoppingIcon.svg');
+const foodIcon            = require('../assets/icons/foodIcon.svg');
+const clipboardIcon       = require('../assets/icons/clipboardIcon.svg');
+const flameIcon           = require('../assets/icons/flameIcon.svg');
+const moneySmallIcon      = require('../assets/icons/moneySmall.svg');
+const transportationIcon  = require('../assets/icons/transportationIcon.svg');
+const entertainmentIcon   = require('../assets/icons/entertainmentIcon.svg');
+const bagIcon             = require('../assets/icons/bagIcon.svg');
 
 // ── Figma item icons ──────────────────────────────────────────────────────────
 const smallCoffeeIcon  = require('../assets/icons/smallCoffee.svg');
@@ -131,12 +134,13 @@ interface MissedCategory {
 }
 
 const MISSED_CATEGORIES: MissedCategory[] = [
-  { name: 'Food Delivery',    icon: transportationIcon, bg: '#eefbfd', textColor: '#0a2627', category: 'Transportation' },
-  { name: 'Online Shopping',  icon: shoppingIcon,       bg: '#fff6d6', textColor: '#4f090b', category: 'Shopping'       },
-  { name: 'Concerts',         icon: entertainmentIcon,  bg: '#f8eeff', textColor: '#400981', category: 'Entertainment'  },
+  { name: 'Food Delivery',    icon: foodIcon,           bg: '#eefbfd', textColor: '#0a2627', category: 'Food'           },
+  { name: 'Online Shopping',  icon: bagIcon,            bg: '#fff6d6', textColor: '#4f090b', category: 'Shopping'       },
   { name: 'Airfares',         icon: transportationIcon, bg: '#ffeddd', textColor: '#4f090b', category: 'Transportation' },
+  { name: 'Concert Tickets',  icon: entertainmentIcon,  bg: '#f8eeff', textColor: '#400981', category: 'Entertainment'  },
   { name: 'Shopping Centers', icon: shoppingIcon,       bg: '#fff6d6', textColor: '#4f090b', category: 'Shopping'       },
   { name: 'Food Trucks',      icon: foodIcon,           bg: '#eefbfd', textColor: '#0a2627', category: 'Food'           },
+  { name: 'Subscriptions',    icon: entertainmentIcon,  bg: '#f8eeff', textColor: '#400981', category: 'Entertainment'  },
 ];
 
 // ── MissedExpensesCard ────────────────────────────────────────────────────────
