@@ -212,10 +212,11 @@ export default function HomeScreen() {
             date: ev.start?.date?.split('T')[0] ?? ev.start?.dateTime?.split('T')[0],
           }));
 
+        const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
         // Filter out events already covered by Firebase predictions
-        const coveredKeys = new Set(predictions.map(p => `${p.date}|${p.event}`));
+        const coveredKeys = new Set(predictions.map(p => `${p.date}|${norm(p.event)}`));
         const uncoveredEvents = upcomingEvents.filter(
-          e => !coveredKeys.has(`${e.date}|${e.title}`)
+          e => !coveredKeys.has(`${e.date}|${norm(e.title)}`)
         );
         console.log('[Ollama] visible:', upcomingEvents.length, 'uncovered:', uncoveredEvents.length);
 

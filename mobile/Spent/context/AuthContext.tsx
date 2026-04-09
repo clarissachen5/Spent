@@ -160,11 +160,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setPendingLocations(prev => prev.filter(l => l.id !== id));
   };
 
+  // Load predictions and check-ins from Firestore immediately on mount (no login required)
+  useEffect(() => {
+    const loadFromFirestore = async () => {
+      try {
+        const db = getFirestore(app);
+        const [analysesSnap, checkInsSnap] = await Promise.all([
+          getDocs(collection(db, 'spending_analyses')),
+          getDocs(collection(db, 'check_ins')),
+        ]);
+        const loadedPredictions: SpendingEstimate[] = [];
+        analysesSnap.forEach(d => {
+          const data = d.data();
+          if (data.date && data.event) {
+            loadedPredictions.push({ date: data.date, event: data.event, low: data.low, medium: data.medium, high: data.high });
+          }
+        });
+        if (loadedPredictions.length > 0) mergePredictions(loadedPredictions);
+        console.log('[Firestore] preloaded', loadedPredictions.length, 'predictions on mount');
+
+        const loadedCheckIns: CheckInResult[] = [];
+        checkInsSnap.forEach(d => {
+          const data = d.data();
+          loadedCheckIns.push({ location: data.location, category: data.category, visited: data.visited, amount: data.amount ?? undefined, timestamp: new Date(data.timestamp) });
+        });
+        if (loadedCheckIns.length > 0) setCheckInResults(loadedCheckIns);
+        setPredictionsLoaded(true);
+      } catch (e) {
+        console.warn('[Firestore] preload failed:', e);
+        setPredictionsLoaded(true); // ungate UI even on error
+      }
+    };
+    loadFromFirestore();
+  }, []);
+
   // Sync predictions, check-ins, and profile from Firestore on login; then run Ollama in background
   useEffect(() => {
     if (!token) return;
 
     const syncOnLogin = async () => {
+      try {
       const db = getFirestore(app);
 
       const [analysesSnap, checkInsSnap, profileSnap] = await Promise.all([
@@ -323,6 +358,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         console.log('[Calendar sync] complete');
       })();
+      } catch (e) {
+        console.warn('[syncOnLogin] Firestore load failed:', e);
+        setPredictionsLoaded(true); // ungate UI even if load fails
+      }
     };
 
     syncOnLogin();
