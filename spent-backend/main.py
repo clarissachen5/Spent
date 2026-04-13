@@ -71,6 +71,40 @@ Return ONLY a JSON object with this structure, no explanation:
     })
 
 
+@app.post("/ollama/spending-summary")
+async def spending_summary(request: Request):
+    try:
+        data = await request.json()
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+
+    spending_by_category: dict = data.get("spending_by_category", {})
+    total: float = data.get("total", 0)
+    month: str = data.get("month", "this month")
+
+    if not spending_by_category:
+        return JSONResponse(status_code=400, content={"error": "No spending data provided"})
+
+    breakdown_lines = "\n".join(
+        f"  - {cat}: ${amt:.2f}" for cat, amt in spending_by_category.items()
+    )
+    prompt = f"""You are a friendly financial assistant helping a college student understand their spending for {month}.
+
+Here is their spending breakdown:
+{breakdown_lines}
+Total: ${total:.2f}
+
+Write a short, encouraging 2-3 sentence summary of their spending habits this month. Be specific about their top categories, note any patterns, and give one actionable tip. Keep it conversational and supportive. Do not use bullet points or lists — write in plain prose only."""
+
+    try:
+        result = ollama_client.generate(model="llama3.2:3b", prompt=prompt, options={"num_predict": 300})
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": f"Ollama error: {str(e)}"})
+
+    return JSONResponse(content={"summary": result.response.strip()})
+
+
 @app.get("/ollama/analyses", response_model=list[SpendingAnalysisOut])
 def list_analyses(db: Session = Depends(get_db)):
     return db.query(SpendingAnalysis).order_by(SpendingAnalysis.created_at.desc()).all()
