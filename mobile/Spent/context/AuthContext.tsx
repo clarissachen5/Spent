@@ -58,6 +58,8 @@ interface AuthContextType {
   saveUserProfile: (profile: UserProfile) => Promise<void>;
   pendingLocations: DetectedLocation[];
   markLocationShown: (id: string) => Promise<void>;
+  monthlyBudget: Record<string, number>;
+  saveMonthlyBudget: (budget: Record<string, number>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -75,6 +77,8 @@ const AuthContext = createContext<AuthContextType>({
   saveUserProfile: async () => {},
   pendingLocations: [],
   markLocationShown: async () => {},
+  monthlyBudget: {},
+  saveMonthlyBudget: async () => {},
 });
 
 // Stable Firestore doc ID for a spending estimate (no '/' allowed in IDs)
@@ -104,6 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userProfile,  setUserProfileState]  = useState<UserProfile | null>(null);
   const [profileLoaded, setProfileLoaded]    = useState(false);
   const [pendingLocations, setPendingLocations] = useState<DetectedLocation[]>([]);
+  const [monthlyBudget, setMonthlyBudget] = useState<Record<string, number>>({});
 
   // Start background location tracking on launch
   useEffect(() => {
@@ -160,10 +165,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const syncOnLogin = async () => {
       try {
-        const [analysesSnap, checkInsSnap, profileSnap] = await Promise.all([
+        const budgetDocId = (() => {
+          const d = new Date();
+          return `${d.getFullYear()}_${d.getMonth()}`;
+        })();
+
+        const [analysesSnap, checkInsSnap, profileSnap, budgetSnap] = await Promise.all([
           getDocs(userCol(userId, 'spending_analyses')),
           getDocs(userCol(userId, 'check_ins')),
           getDocs(userCol(userId, 'user_profile')),
+          getDocs(userCol(userId, 'monthly_budgets')),
         ]);
 
         const loadedPredictions: SpendingEstimate[] = [];
@@ -206,6 +217,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             goals:      d.goals ?? [],
           });
         }
+        const budgetDoc = budgetSnap.docs.find(d => d.id === budgetDocId);
+        if (budgetDoc) {
+          const { updated_at, ...categories } = budgetDoc.data();
+          setMonthlyBudget(categories as Record<string, number>);
+        }
+
         setProfileLoaded(true);
         setPredictionsLoaded(true);
 
@@ -350,6 +367,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const saveMonthlyBudget = async (budget: Record<string, number>) => {
+    setMonthlyBudget(budget);
+    const uid = userId ?? await AsyncStorage.getItem(USER_ID_KEY);
+    if (!uid) return;
+    const d = new Date();
+    const docId = `${d.getFullYear()}_${d.getMonth()}`;
+    await setDoc(userDoc(uid, 'monthly_budgets', docId), {
+      ...budget,
+      updated_at: new Date().toISOString(),
+    });
+  };
+
   const markLocationShown = async (id: string) => {
     if (userId) {
       try {
@@ -371,6 +400,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUserProfileState(null);
     setProfileLoaded(false);
     setPendingLocations([]);
+    setMonthlyBudget({});
   };
 
   return (
@@ -380,6 +410,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       predictions, mergePredictions, predictionsLoaded,
       userProfile, profileLoaded, saveUserProfile,
       pendingLocations, markLocationShown,
+      monthlyBudget, saveMonthlyBudget,
     }}>
       {children}
     </AuthContext.Provider>

@@ -13,7 +13,6 @@ import {
   ScrollView,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -302,22 +301,17 @@ const BUDGET_CATEGORIES = [
   { name: 'Other',          icon: shoppingIcon,       color: '#F4A0A0', max: 400 },
 ];
 
-const BUDGET_KEY = () => {
-  const d = new Date();
-  return `monthly_budget_${d.getFullYear()}_${d.getMonth()}`;
-};
 
 function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
+  const { saveMonthlyBudget, monthlyBudget } = useAuth();
   const [amounts, setAmounts] = useState<Record<string, number>>(
-    Object.fromEntries(BUDGET_CATEGORIES.map(c => [c.name, 0])),
+    Object.fromEntries(BUDGET_CATEGORIES.map(c => [c.name, monthlyBudget[c.name] ?? 0])),
   );
 
   const total = Object.values(amounts).reduce((s, v) => s + v, 0);
 
   const handleSave = async () => {
-    try {
-      await AsyncStorage.setItem(BUDGET_KEY(), JSON.stringify(amounts));
-    } catch (_) {}
+    await saveMonthlyBudget(amounts);
     onSave();
   };
 
