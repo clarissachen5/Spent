@@ -79,7 +79,7 @@ function sortEvents(events: CalendarEvent[]): CalendarEvent[] {
 
 export default function CalendarScreen() {
   const { top }   = useSafeAreaInsets();
-  const { token, checkInResults, predictions, mergePredictions, predictionsLoaded } = useAuth();
+  const { token, userId, checkInResults, predictions, mergePredictions, predictionsLoaded } = useAuth();
 
   const [monthOffset, setMonthOffset]       = useState(0);
   const [eventsByDate, setEventsByDate]     = useState<{ [dateStr: string]: CalendarEvent[] }>({});
@@ -107,7 +107,7 @@ export default function CalendarScreen() {
 
   // ── One-time Ollama sync across ±6 months from today ────────────────────
   useEffect(() => {
-    if (!token || !predictionsLoaded) return;
+    if (!token || !userId || !predictionsLoaded) return;
 
     const syncOllama = async () => {
       const now   = new Date();
@@ -196,7 +196,7 @@ export default function CalendarScreen() {
           const savedAt = new Date().toISOString();
           try {
             await Promise.all(estimates.map((p: SpendingEstimate) =>
-              setDoc(doc(db, 'spending_analyses', `${p.date}__${p.event.replace(/\//g, '-')}`.slice(0, 500)), {
+              setDoc(doc(db, 'users', userId!, 'spending_analyses', `${p.date}__${p.event.replace(/\//g, '-')}`.slice(0, 500)), {
                 date: p.date, event: p.event,
                 low: p.low, medium: p.medium, high: p.high,
                 created_at: savedAt,
@@ -223,7 +223,7 @@ export default function CalendarScreen() {
 
   // ── Fetch events for the displayed month ──────────────────────────────────
   useEffect(() => {
-    if (!token || !predictionsLoaded) return;
+    if (!token || !userId || !predictionsLoaded) return;
     const key = `${year}-${month}`;
     if (fetchedMonths.has(key)) return;
 
@@ -322,7 +322,7 @@ export default function CalendarScreen() {
           const db = getFirestore(app);
           const savedAt = new Date().toISOString();
           await Promise.all(allEstimates.map((p: SpendingEstimate) =>
-            setDoc(doc(db, 'spending_analyses', `${p.date}__${p.event.replace(/\//g, '-')}`.slice(0, 500)), {
+            setDoc(doc(db, 'users', userId!, 'spending_analyses', `${p.date}__${p.event.replace(/\//g, '-')}`.slice(0, 500)), {
               date: p.date, event: p.event,
               low: p.low, medium: p.medium, high: p.high,
               created_at: savedAt,

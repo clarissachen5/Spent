@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -54,11 +53,6 @@ const CATEGORY_CONFIG = [
 // Fallback max per category when no budget has been saved yet
 const DEFAULT_CATEGORY_MAX = 100;
 
-function budgetKey(): string {
-  const d = new Date();
-  return `monthly_budget_${d.getFullYear()}_${d.getMonth()}`;
-}
-
 // Returns 7 consecutive dates starting at today + dayOffset
 function getVisibleDates(dayOffset: number = 0): Date[] {
   const today = new Date();
@@ -89,20 +83,9 @@ const LOCATION_TASK_NAME = 'spent-background-location';
 export default function HomeScreen() {
   const { top } = useSafeAreaInsets();
   const { token: paramToken, checkIn } = useLocalSearchParams();
-  const { token: contextToken, checkInResults, predictions, mergePredictions, predictionsLoaded, pendingLocations } = useAuth();
+  const { token: contextToken, checkInResults, predictions, mergePredictions, predictionsLoaded, pendingLocations, monthlyBudget } = useAuth();
   const token = contextToken ?? paramToken;
   const [trackingActive, setTrackingActive] = useState(false);
-  const [categoryBudget, setCategoryBudget] = useState<Record<string, number>>({});
-
-  // Load saved monthly budget from AsyncStorage
-  const loadBudget = useCallback(async () => {
-    try {
-      const raw = await AsyncStorage.getItem(budgetKey());
-      if (raw) setCategoryBudget(JSON.parse(raw));
-    } catch (_) {}
-  }, []);
-
-  useEffect(() => { loadBudget(); }, [loadBudget]);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -417,7 +400,7 @@ export default function HomeScreen() {
       <View style={styles.categoriesCard}>
         {CATEGORY_CONFIG.map((cat, i) => {
           const amount = categoryTotals[cat.name] ?? 0;
-          const max    = categoryBudget[cat.name] || DEFAULT_CATEGORY_MAX;
+          const max    = monthlyBudget[cat.name] || DEFAULT_CATEGORY_MAX;
           const fill   = Math.min(amount / max, 1);
           return (
             <View
@@ -458,8 +441,12 @@ export default function HomeScreen() {
       {/* ── Ollama predictions ── */}
       {predictions.length > 0 && (
         <View style={styles.predictionsCard}>
-          {predictions.map((p, i) => (
-            <View key={i} style={[styles.predictionRow, i < predictions.length - 1 && styles.categoryDivider]}>
+          {[...predictions]
+            .filter(p => p.date >= toDateStr(new Date()))
+            .sort((a, b) => a.date.localeCompare(b.date))
+            .slice(0, 10)
+            .map((p, i, arr) => (
+            <View key={i} style={[styles.predictionRow, i < arr.length - 1 && styles.categoryDivider]}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.predictionEvent}>{p.event}</Text>
                 <Text style={styles.predictionDate}>{p.date}</Text>
@@ -476,7 +463,7 @@ export default function HomeScreen() {
 
       <CheckInModal
         visible={checkInVisible}
-        onClose={() => { setCheckInVisible(false); loadBudget(); }}
+        onClose={() => setCheckInVisible(false)}
       />
     </ScrollView>
   );

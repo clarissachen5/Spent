@@ -5,6 +5,7 @@ import axios from 'axios';
 import { getFirestore, collection, addDoc } from 'firebase/firestore';
 import { app } from '../src/config/firebase';
 import { GOOGLE_MAPS_KEY } from '../constants/config';
+import { USER_ID_KEY } from '../context/AuthContext';
 
 const LOCATION_TASK_NAME = 'spent-background-location';
 const DWELL_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
@@ -51,8 +52,13 @@ async function createDetectedLocation(lat: number, lng: number, arrivedAt: numbe
     const place = placesResp.data.results?.[0];
     if (!place) return;
 
+    const userId = await AsyncStorage.getItem(USER_ID_KEY);
+    if (!userId) {
+      console.warn('[LocationTracker] no userId in storage, skipping save');
+      return;
+    }
     const db = getFirestore(app);
-    await addDoc(collection(db, 'detected_locations'), {
+    await addDoc(collection(db, 'users', userId, 'detected_locations'), {
       google_place_id: place.place_id,
       place_name:      place.name,
       address:         place.vicinity ?? '',
