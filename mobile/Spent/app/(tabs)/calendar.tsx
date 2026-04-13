@@ -95,7 +95,6 @@ export default function CalendarScreen() {
   predictions.forEach((p: SpendingEstimate) => {
     predictedTotalsByDate[p.date] = (predictedTotalsByDate[p.date] || 0) + Number(p.medium?.amount ?? 0);
     predictedByEventKey[`${p.date}|${norm(p.event)}`] = {
-    predictedByEventKey[`${p.date}|${norm(p.event)}`] = {
       amount: Number(p.medium?.amount ?? 0),
       description: p.medium?.description ?? '',
     };

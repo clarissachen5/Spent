@@ -751,12 +751,6 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
     onClose();
   };
 
-  const handleClose = () => {
-    setShowMissed(false);
-    setCurrentIndex(0);
-    onClose();
-  };
-
   const remaining = locations.slice(currentIndex);
   const active    = remaining[0];
   const collapsed = remaining.slice(1);
