@@ -12,6 +12,8 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -287,6 +289,167 @@ function MissedExpensesCard({ onDone, onLog }: MissedExpensesCardProps) {
     </KeyboardAvoidingView>
   );
 }
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Generic price items per category (used for detected locations) ────────────
+// ── Budget Estimate Card ──────────────────────────────────────────────────────
+const BUDGET_CATEGORIES = [
+  { name: 'Food',           icon: foodIcon,           color: '#C8E8FF', max: 600 },
+  { name: 'Coffee',         icon: coffeeIcon,         color: '#F4B8C8', max: 200 },
+  { name: 'Shopping',       icon: bagIcon,            color: '#fcb842', max: 600 },
+  { name: 'Entertainment',  icon: entertainmentIcon,  color: '#C9A8E8', max: 400 },
+  { name: 'Transportation', icon: transportationIcon, color: '#FFCBA4', max: 400 },
+  { name: 'Other',          icon: shoppingIcon,       color: '#F4A0A0', max: 400 },
+];
+
+const BUDGET_KEY = () => {
+  const d = new Date();
+  return `monthly_budget_${d.getFullYear()}_${d.getMonth()}`;
+};
+
+function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
+  const [amounts, setAmounts] = useState<Record<string, number>>(
+    Object.fromEntries(BUDGET_CATEGORIES.map(c => [c.name, 0])),
+  );
+
+  const total = Object.values(amounts).reduce((s, v) => s + v, 0);
+
+  const handleSave = async () => {
+    try {
+      await AsyncStorage.setItem(BUDGET_KEY(), JSON.stringify(amounts));
+    } catch (_) {}
+    onSave();
+  };
+
+  return (
+    <View style={budgetStyles.card}>
+      <Text style={budgetStyles.title}>How much do you think{'\n'}you will spend this month?</Text>
+      <Text style={budgetStyles.totalLabel}>
+        Total estimate: <Text style={budgetStyles.totalAmt}>${total}</Text>
+      </Text>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        style={{ width: '100%' }}
+        contentContainerStyle={{ gap: 14, paddingBottom: 8 }}
+      >
+        {BUDGET_CATEGORIES.map(cat => (
+          <View key={cat.name} style={budgetStyles.categoryRow}>
+            <View style={budgetStyles.categoryHeader}>
+              <View style={[budgetStyles.iconWrap, { backgroundColor: cat.color }]}>
+                <Image source={cat.icon} style={budgetStyles.catIcon} contentFit="contain" />
+              </View>
+              <Text style={budgetStyles.categoryName}>{cat.name}</Text>
+              <Text style={budgetStyles.categoryAmt}>${amounts[cat.name]}</Text>
+            </View>
+            <Slider
+              style={budgetStyles.slider}
+              value={amounts[cat.name]}
+              onValueChange={v =>
+                setAmounts(prev => ({ ...prev, [cat.name]: Math.round(v / 5) * 5 }))
+              }
+              minimumValue={0}
+              maximumValue={cat.max}
+              step={5}
+              minimumTrackTintColor={DARK_GREEN}
+              maximumTrackTintColor="#E5E5E5"
+              thumbTintColor={DARK_GREEN}
+            />
+          </View>
+        ))}
+      </ScrollView>
+
+      <TouchableOpacity style={budgetStyles.saveBtn} onPress={handleSave} activeOpacity={0.85}>
+        <Text style={budgetStyles.saveBtnTxt}>Save</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const budgetStyles = StyleSheet.create({
+  card: {
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
+    borderRadius: CARD_RADIUS,
+    backgroundColor: '#fff',
+    paddingHorizontal: 22,
+    paddingTop: 22,
+    paddingBottom: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 10,
+    alignItems: 'stretch',
+    gap: 10,
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: DARK_GREEN,
+    lineHeight: 23,
+  },
+  totalLabel: {
+    fontSize: 12,
+    color: GRAY_TEXT,
+    fontWeight: '500',
+  },
+  totalAmt: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: DARK_GREEN,
+  },
+  categoryRow: {
+    gap: 2,
+  },
+  categoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  iconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  catIcon: {
+    width: 15,
+    height: 15,
+  },
+  categoryName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1e1d19',
+  },
+  categoryAmt: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: DARK_GREEN,
+    minWidth: 40,
+    textAlign: 'right',
+  },
+  slider: {
+    width: '100%',
+    height: 32,
+    marginTop: -4,
+  },
+  saveBtn: {
+    backgroundColor: DARK_GREEN,
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  saveBtnTxt: {
+    color: LIME_GREEN,
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+});
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Generic price items per category (used for detected locations) ────────────
@@ -715,6 +878,7 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
   const { addCheckInResult, pendingLocations, markLocationShown } = useAuth();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showMissed,   setShowMissed]   = useState(false);
+  const [showBudget,   setShowBudget]   = useState(false);
 
   // Use real tracked locations when available, otherwise fall back to hardcoded demo data
   const locations: Location[] = pendingLocations.length > 0
@@ -747,6 +911,7 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
 
   const handleClose = () => {
     setShowMissed(false);
+    setShowBudget(false);
     setCurrentIndex(0);
     onClose();
   };
@@ -771,11 +936,15 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.subtitle}>Swipe right if you visited, left if not</Text>
+        <Text style={styles.subtitle}>
+          {showBudget ? 'Set your monthly budget' : 'Swipe right if you visited, left if not'}
+        </Text>
 
-        {showMissed ? (
+        {showBudget ? (
+          <BudgetEstimateCard onSave={handleClose} />
+        ) : showMissed ? (
           <MissedExpensesCard
-            onDone={handleClose}
+            onDone={() => setShowBudget(true)}
             onLog={(name, category, amount) =>
               addCheckInResult({ location: name, category, visited: true, amount, timestamp: new Date() })
             }
