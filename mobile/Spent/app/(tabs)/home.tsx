@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -50,8 +51,13 @@ const CATEGORY_CONFIG = [
   { name: 'Other',          icon: otherIcon          },
 ];
 
-// Max dollars per category before the bar is full
-const CATEGORY_MAX = 100;
+// Fallback max per category when no budget has been saved yet
+const DEFAULT_CATEGORY_MAX = 100;
+
+function budgetKey(): string {
+  const d = new Date();
+  return `monthly_budget_${d.getFullYear()}_${d.getMonth()}`;
+}
 
 // Returns 7 consecutive dates starting at today + dayOffset
 function getVisibleDates(dayOffset: number = 0): Date[] {
@@ -86,6 +92,17 @@ export default function HomeScreen() {
   const { token: contextToken, checkInResults, predictions, mergePredictions, predictionsLoaded, pendingLocations } = useAuth();
   const token = contextToken ?? paramToken;
   const [trackingActive, setTrackingActive] = useState(false);
+  const [categoryBudget, setCategoryBudget] = useState<Record<string, number>>({});
+
+  // Load saved monthly budget from AsyncStorage
+  const loadBudget = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(budgetKey());
+      if (raw) setCategoryBudget(JSON.parse(raw));
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => { loadBudget(); }, [loadBudget]);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -400,7 +417,8 @@ export default function HomeScreen() {
       <View style={styles.categoriesCard}>
         {CATEGORY_CONFIG.map((cat, i) => {
           const amount = categoryTotals[cat.name] ?? 0;
-          const fill   = Math.min(amount / CATEGORY_MAX, 1);
+          const max    = categoryBudget[cat.name] || DEFAULT_CATEGORY_MAX;
+          const fill   = Math.min(amount / max, 1);
           return (
             <View
               key={cat.name}
@@ -422,7 +440,9 @@ export default function HomeScreen() {
 
               <View style={styles.amountGroup}>
                 <Image source={dollarSignSmall} style={styles.dollarSmall} contentFit="contain" />
-                <Text style={styles.categoryAmount}>{amount}</Text>
+                <Text style={styles.categoryAmount}>
+                  {amount}<Text style={styles.categoryMax}>/{max}</Text>
+                </Text>
               </View>
             </View>
           );
@@ -456,7 +476,7 @@ export default function HomeScreen() {
 
       <CheckInModal
         visible={checkInVisible}
-        onClose={() => setCheckInVisible(false)}
+        onClose={() => { setCheckInVisible(false); loadBudget(); }}
       />
     </ScrollView>
   );
@@ -814,6 +834,11 @@ const styles = StyleSheet.create({
     height: 16,
   },
   categoryAmount: {
+    fontSize: 16,
+    color: BLACK,
+    fontWeight: '400',
+  },
+  categoryMax: {
     fontSize: 16,
     color: BLACK,
     fontWeight: '400',
