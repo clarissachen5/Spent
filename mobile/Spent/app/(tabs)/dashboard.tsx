@@ -57,6 +57,7 @@ useEffect(() => {
 useEffect(() => {
     if (!token) return;
 
+
     const fetchEvents = async () => {
     try {
         const now = new Date();
@@ -75,6 +76,7 @@ useEffect(() => {
         const data = await response.json();
 
         const counts: { [key: string]: number } = {};
+        const groupedEvents = parseEvents(data.items || []);
 
         (data.items || []).forEach((event: any) => {
         const date =
@@ -127,7 +129,10 @@ const getColor = (count: number) => {
     return `rgb(${intensity}, 0, 0)`;
 };
 
-return (
+
+
+
+  return (
     <View style={styles.container}>
 
     {/* TOP — Summary */}
@@ -220,7 +225,7 @@ return (
         </ScrollView>
     </View>
     </View>
-);
+  );
 }
 
 const styles = StyleSheet.create({
