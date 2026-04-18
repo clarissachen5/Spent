@@ -299,8 +299,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   welcomePig: {
-    width: 420,
-    height: 460,
+    width: 260,
+    height: 240,
   },
   welcomeTitle: {
     marginTop: 22,
