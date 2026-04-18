@@ -13,11 +13,12 @@ import {
   Image,
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
+import Svg, { Defs, LinearGradient as SvgGradient, Stop, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 const DARK_GREEN  = '#0a542f';
 const LIME_BTN    = '#b8e040';
@@ -25,7 +26,7 @@ const BLACK       = '#1e1d19';
 const GRAY_TEXT   = '#b0b0b0';
 const LIGHT_GRAY  = '#e8e8e8';
 
-const PIG = require('../../assets/images/pig-mud.png');
+const PIG = require('../../assets/images/pig.png');
 
 const CATEGORIES = [
   { key: 'Eating Out',     icon: require('../../assets/icons/foodIcon.svg') },
@@ -36,6 +37,10 @@ const CATEGORIES = [
   { key: 'Shopping',       icon: require('../../assets/icons/shoppingIcon.svg') },
 ];
 
+function onlyNumbers(v: string) {
+  return v.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+}
+
 // ── Speech bubble ──────────────────────────────────────────────────────────────
 function SpeechBubble({ text, pointer }: { text: string; pointer: 'down' | 'left' }) {
   return (
@@ -44,12 +49,12 @@ function SpeechBubble({ text, pointer }: { text: string; pointer: 'down' | 'left
         <Text style={styles.bubbleText}>{text}</Text>
       </View>
       {pointer === 'down' && <View style={styles.pointerDown} />}
-      {pointer === 'left' && <View style={styles.pointerLeft} />}
+      {pointer === 'left'  && <View style={styles.pointerLeft} />}
     </View>
   );
 }
 
-// ── Continue button (pinned to bottom) ────────────────────────────────────────
+// ── Continue button pinned to bottom ──────────────────────────────────────────
 function BottomButton({
   label = 'Continue',
   onPress,
@@ -84,26 +89,27 @@ export default function OnboardingScreen() {
   const router   = useRouter();
   const { saveUserProfile, saveMonthlyBudget } = useAuth();
 
-  const [step,          setStep]         = useState(0);
-  const [timerDone,     setTimerDone]    = useState(false);
-  const [pigName,       setPigName]      = useState('');
-  const [userName,      setUserName]     = useState('');
-  const [userAge,       setUserAge]      = useState('');
-  const [annualIncome,  setAnnualIncome] = useState('');
-  const [budgets,       setBudgets]      = useState<Record<string, string>>({});
-  const [saving,        setSaving]       = useState(false);
+  const [step,         setStep]        = useState(0);
+  const [timerDone,    setTimerDone]   = useState(false);
+  const [pigName,      setPigName]     = useState('');
+  const [userName,     setUserName]    = useState('');
+  const [userAge,      setUserAge]     = useState('');
+  const [annualIncome, setAnnualIncome]= useState('');
+  const [budgets,      setBudgets]     = useState<Record<string, string>>({});
+  const [saving,       setSaving]      = useState(false);
 
-  // 5-second welcome timer
   useEffect(() => {
     const t = setTimeout(() => setTimerDone(true), 5000);
     return () => clearTimeout(t);
   }, []);
 
-  // Advance past welcome after timer
   useEffect(() => {
     if (!timerDone || step !== 0) return;
     setStep(1);
   }, [timerDone]);
+
+  const step2Valid = userName.trim() !== '' && userAge.trim() !== '' && annualIncome.trim() !== '';
+  const step3Valid = CATEGORIES.every(c => (budgets[c.key] ?? '').trim() !== '');
 
   const handleFinish = async () => {
     setSaving(true);
@@ -116,7 +122,7 @@ export default function OnboardingScreen() {
       });
       const budget: Record<string, number> = {};
       CATEGORIES.forEach(c => {
-        budget[c.key] = parseFloat(budgets[c.key]?.replace(/[^0-9.]/g, '') || '0') || 0;
+        budget[c.key] = parseFloat(budgets[c.key] || '0') || 0;
       });
       await saveMonthlyBudget(budget);
       router.replace({ pathname: '/(tabs)/home', params: { checkIn: Date.now().toString() } });
@@ -125,12 +131,23 @@ export default function OnboardingScreen() {
     }
   };
 
-  // ── Step 0: Welcome splash ────────────────────────────────────────────────────
+  // ── Step 0: Welcome ───────────────────────────────────────────────────────────
   if (step === 0) {
     return (
-      <View style={[styles.welcome, { paddingTop: top }]}>
-        <View style={styles.welcomeBottom} />
-        <View style={styles.welcomeCenter}>
+      <View style={styles.welcome}>
+        {/* SVG gradient background */}
+        <Svg style={StyleSheet.absoluteFill} width={width} height={height}>
+          <Defs>
+            <SvgGradient id="wg" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0"    stopColor="#ffffff" stopOpacity="1" />
+              <Stop offset="0.45" stopColor="#edf9c0" stopOpacity="1" />
+              <Stop offset="1"    stopColor="#c4e438" stopOpacity="1" />
+            </SvgGradient>
+          </Defs>
+          <Rect x="0" y="0" width={width} height={height} fill="url(#wg)" />
+        </Svg>
+
+        <View style={[styles.welcomeCenter, { paddingTop: top }]}>
           <Image source={PIG} style={styles.welcomePig} resizeMode="contain" />
           <Text style={styles.welcomeTitle}>Welcome to Spent</Text>
         </View>
@@ -146,13 +163,10 @@ export default function OnboardingScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={[styles.stepContent, { paddingTop: top + 40 }]}>
-          {/* Bubble centered above pig */}
           <View style={styles.bubbleCenterRow}>
             <SpeechBubble text="Name Me!" pointer="down" />
           </View>
-
           <Image source={PIG} style={styles.pigCenter} resizeMode="contain" />
-
           <Text style={styles.fieldLabel}>Your Pig's Name</Text>
           <TextInput
             style={styles.input}
@@ -162,7 +176,6 @@ export default function OnboardingScreen() {
             autoCorrect={false}
           />
         </View>
-
         <BottomButton onPress={() => setStep(2)} disabled={!pigName.trim()} />
       </KeyboardAvoidingView>
     );
@@ -181,7 +194,7 @@ export default function OnboardingScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.mascotRow}>
-            <Image source={PIG} style={styles.pigSide} resizeMode="contain" />
+            <Image source={PIG} style={styles.pigSide2} resizeMode="contain" />
             <View style={styles.bubbleSideWrapper}>
               <SpeechBubble text={"Let's Learn More\nAbout You!"} pointer="left" />
             </View>
@@ -201,7 +214,7 @@ export default function OnboardingScreen() {
           <TextInput
             style={styles.input}
             value={userAge}
-            onChangeText={setUserAge}
+            onChangeText={v => setUserAge(onlyNumbers(v))}
             placeholder="i.e. 18"
             placeholderTextColor={GRAY_TEXT}
             keyboardType="number-pad"
@@ -211,14 +224,13 @@ export default function OnboardingScreen() {
           <TextInput
             style={styles.input}
             value={annualIncome}
-            onChangeText={setAnnualIncome}
-            placeholder="i.e. 120,000"
+            onChangeText={v => setAnnualIncome(onlyNumbers(v))}
+            placeholder="i.e. 120000"
             placeholderTextColor={GRAY_TEXT}
             keyboardType="number-pad"
           />
         </ScrollView>
-
-        <BottomButton onPress={() => setStep(3)} />
+        <BottomButton onPress={() => setStep(3)} disabled={!step2Valid} />
       </KeyboardAvoidingView>
     );
   }
@@ -235,7 +247,7 @@ export default function OnboardingScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.mascotRow}>
-          <Image source={PIG} style={styles.pigSide} resizeMode="contain" />
+          <Image source={PIG} style={styles.pigSide3} resizeMode="contain" />
           <View style={styles.bubbleSideWrapper}>
             <SpeechBubble
               text={"How much do you\nexpect to spend in\neach category\nevery month?"}
@@ -258,7 +270,9 @@ export default function OnboardingScreen() {
               <TextInput
                 style={styles.categoryInput}
                 value={budgets[cat.key] || ''}
-                onChangeText={v => setBudgets(prev => ({ ...prev, [cat.key]: v }))}
+                onChangeText={v =>
+                  setBudgets(prev => ({ ...prev, [cat.key]: onlyNumbers(v) }))
+                }
                 placeholder="i.e. $25"
                 placeholderTextColor={GRAY_TEXT}
                 keyboardType="decimal-pad"
@@ -267,37 +281,26 @@ export default function OnboardingScreen() {
           ))}
         </View>
       </ScrollView>
-
-      <BottomButton onPress={handleFinish} loading={saving} />
+      <BottomButton onPress={handleFinish} disabled={!step3Valid} loading={saving} />
     </KeyboardAvoidingView>
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
 
   // Welcome
   welcome: {
     flex: 1,
-    backgroundColor: '#f5fce5',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  welcomeBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: '42%',
-    backgroundColor: '#c8e84a',
-    opacity: 0.38,
   },
   welcomeCenter: {
     alignItems: 'center',
   },
   welcomePig: {
-    width: 210,
-    height: 230,
+    width: 420,
+    height: 460,
   },
   welcomeTitle: {
     marginTop: 22,
@@ -305,6 +308,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#3b1c00',
   },
+
   // Shared step wrapper
   screen: {
     flex: 1,
@@ -331,7 +335,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
-  pigSide: {
+  pigSide2: {
+    width: 200,
+    height: 215,
+  },
+  pigSide3: {
     width: 175,
     height: 190,
   },
@@ -359,7 +367,6 @@ const styles = StyleSheet.create({
   },
   pointerDown: {
     alignSelf: 'center',
-    marginLeft: 0,
     width: 0,
     height: 0,
     borderLeftWidth: 9,
