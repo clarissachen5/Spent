@@ -8,7 +8,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import * as firebase from '../src/config/firebase';
 import { AuthProvider } from '../context/AuthContext';
 export const unstable_settings = {
-  anchor: '(tabs)',
+  initialRouteName: '(tabs)',
 };
 
 export default function RootLayout() {
@@ -24,7 +24,6 @@ export default function RootLayout() {
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
 
-          <Stack.Screen name="signup" options={{ headerShown: false }} />
           <Stack.Screen name="checkin" options={{ title: 'Check In' }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
         </Stack>

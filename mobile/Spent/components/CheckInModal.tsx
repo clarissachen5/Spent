@@ -307,8 +307,23 @@ function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
   const [amounts, setAmounts] = useState<Record<string, number>>(
     Object.fromEntries(BUDGET_CATEGORIES.map(c => [c.name, monthlyBudget[c.name] ?? 0])),
   );
+  const [maxAmounts, setMaxAmounts] = useState<Record<string, number>>(
+    Object.fromEntries(BUDGET_CATEGORIES.map(c => [c.name, Math.max(c.max, (monthlyBudget[c.name] ?? 0) * 2 || c.max)])),
+  );
 
   const total = Object.values(amounts).reduce((s, v) => s + v, 0);
+
+  const handleValueChange = (name: string, v: number) => {
+    const snapped = Math.round(v / 5) * 5;
+    setAmounts(prev => ({ ...prev, [name]: snapped }));
+    // expand max when within 15% of the right edge
+    setMaxAmounts(prev => {
+      if (snapped >= prev[name] * 0.85) {
+        return { ...prev, [name]: prev[name] * 2 };
+      }
+      return prev;
+    });
+  };
 
   const handleSave = async () => {
     await saveMonthlyBudget(amounts);
@@ -339,11 +354,9 @@ function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
             <Slider
               style={budgetStyles.slider}
               value={amounts[cat.name]}
-              onValueChange={v =>
-                setAmounts(prev => ({ ...prev, [cat.name]: Math.round(v / 5) * 5 }))
-              }
+              onValueChange={v => handleValueChange(cat.name, v)}
               minimumValue={0}
-              maximumValue={cat.max}
+              maximumValue={maxAmounts[cat.name]}
               step={5}
               minimumTrackTintColor={DARK_GREEN}
               maximumTrackTintColor="#E5E5E5"
@@ -516,8 +529,10 @@ function buildScrubItems(location: Location): ScrubItem[] {
   ];
 }
 
+const ENDLESS_EXTRA = ITEM_GAP * 12; // extra ruler space beyond last item
+
 function buildTicks(numItems: number): { x: number; height: number }[] {
-  const rulerW = RULER_PAD + (numItems - 1) * ITEM_GAP + RULER_PAD;
+  const rulerW = RULER_PAD + (numItems - 1) * ITEM_GAP + RULER_PAD + ENDLESS_EXTRA;
   const result: { x: number; height: number }[] = [];
   for (let x = 0; x <= rulerW; x += TICK_UNIT) {
     const nearItem = Array.from({ length: numItems }).some(
@@ -534,10 +549,19 @@ function computeValueFromOffset(
 ): { price: number; isNothing: boolean } {
   'worklet';
   const n   = prices.length;
-  const pos = Math.max(0, Math.min(n - 1, -off / ITEM_GAP));
+  const pos = Math.max(0, -off / ITEM_GAP); // no upper clamp — endless right
   if (pos < 0.01) return { price: 0, isNothing: true };
+
+  if (pos >= n - 1) {
+    // Extrapolate beyond the last item using the last price gap
+    const lastPrice = prices[n - 1];
+    const priceStep = n >= 2 ? prices[n - 1] - prices[n - 2] : prices[n - 1];
+    const extra     = pos - (n - 1);
+    return { price: Math.round(lastPrice + extra * priceStep), isNothing: false };
+  }
+
   const lowerIdx = Math.floor(pos);
-  const upperIdx = Math.min(lowerIdx + 1, n - 1);
+  const upperIdx = lowerIdx + 1;
   const t        = pos - lowerIdx;
   const price    = prices[lowerIdx] + (prices[upperIdx] - prices[lowerIdx]) * t;
   return { price: Math.round(price), isNothing: false };
@@ -566,7 +590,7 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
   const scrubItems = useMemo(() => buildScrubItems(location), [location]);
   const prices     = useMemo(() => scrubItems.map(i => i.price), [scrubItems]);
   const ticks      = useMemo(() => buildTicks(scrubItems.length), [scrubItems.length]);
-  const rulerW     = RULER_PAD + (scrubItems.length - 1) * ITEM_GAP + RULER_PAD;
+  const rulerW     = RULER_PAD + (scrubItems.length - 1) * ITEM_GAP + RULER_PAD + ENDLESS_EXTRA;
 
   // ── Stats from history ──
   const stats = useMemo(() => {
@@ -659,7 +683,7 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
     .onBegin(() => { scrubStart.value = scrubOffset.value; })
     .onUpdate(e => {
       const maxOff  = 0;
-      const minOff  = -(scrubItems.length - 1) * ITEM_GAP;
+      const minOff  = -((scrubItems.length - 1) * ITEM_GAP + ENDLESS_EXTRA);
       const raw     = scrubStart.value + e.translationX;
       // snap to nearest tick mark
       const snapped = Math.round(raw / TICK_UNIT) * TICK_UNIT;
