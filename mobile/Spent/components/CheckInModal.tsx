@@ -43,6 +43,16 @@ const mediumCoffeeIcon = require('../assets/icons/mediumCoffee.svg');
 const largeCoffeeIcon  = require('../assets/icons/largeCoffee.svg');
 const denyIcon         = require('../assets/icons/denyIcon.svg');
 
+// ── Missed expense category icons (from Figma) ────────────────────────────────
+const missedFoodDeliveryIcon    = require('../assets/icons/missedFoodDelivery.svg');
+const missedOnlineShoppingIcon  = require('../assets/icons/missedOnlineShopping.svg');
+const missedAirfaresIcon        = require('../assets/icons/missedAirfares.svg');
+const missedConcertTicketsIcon  = require('../assets/icons/missedConcertTickets.svg');
+const missedShoppingCentersIcon = require('../assets/icons/missedShoppingCenters.svg');
+const missedFoodTrucksIcon      = require('../assets/icons/missedFoodTrucks.svg');
+const missedSubscriptionsIcon   = require('../assets/icons/missedSubscriptions.svg');
+const missedManualInputIcon     = require('../assets/icons/missedManualInput.svg');
+
 // ── Dimensions ────────────────────────────────────────────────────────────────
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_WIDTH    = SCREEN_WIDTH * 0.88;
@@ -136,13 +146,13 @@ interface MissedCategory {
 }
 
 const MISSED_CATEGORIES: MissedCategory[] = [
-  { name: 'Food Delivery',    icon: foodIcon,           bg: '#eefbfd', textColor: '#0a2627', category: 'Food'           },
-  { name: 'Online Shopping',  icon: bagIcon,            bg: '#fff6d6', textColor: '#4f090b', category: 'Shopping'       },
-  { name: 'Airfares',         icon: transportationIcon, bg: '#ffeddd', textColor: '#4f090b', category: 'Transportation' },
-  { name: 'Concert Tickets',  icon: entertainmentIcon,  bg: '#f8eeff', textColor: '#400981', category: 'Entertainment'  },
-  { name: 'Shopping Centers', icon: shoppingIcon,       bg: '#fff6d6', textColor: '#4f090b', category: 'Shopping'       },
-  { name: 'Food Trucks',      icon: foodIcon,           bg: '#eefbfd', textColor: '#0a2627', category: 'Food'           },
-  { name: 'Subscriptions',    icon: entertainmentIcon,  bg: '#f8eeff', textColor: '#400981', category: 'Entertainment'  },
+  { name: 'Food Delivery',    icon: missedFoodDeliveryIcon,    bg: '#eefbfd', textColor: '#0a2627', category: 'Food'           },
+  { name: 'Online Shopping',  icon: missedOnlineShoppingIcon,  bg: '#fff6d6', textColor: '#4f090b', category: 'Shopping'       },
+  { name: 'Airfares',         icon: missedAirfaresIcon,        bg: '#ffeddd', textColor: '#4f090b', category: 'Transportation' },
+  { name: 'Concert Tickets',  icon: missedConcertTicketsIcon,  bg: '#f8eeff', textColor: '#400981', category: 'Entertainment'  },
+  { name: 'Shopping Centers', icon: missedShoppingCentersIcon, bg: '#fff6d6', textColor: '#4f090b', category: 'Shopping'       },
+  { name: 'Food Trucks',      icon: missedFoodTrucksIcon,      bg: '#eefbfd', textColor: '#0a2627', category: 'Food'           },
+  { name: 'Subscriptions',    icon: missedSubscriptionsIcon,   bg: '#f8eeff', textColor: '#400981', category: 'Entertainment'  },
 ];
 
 // ── MissedExpensesCard ────────────────────────────────────────────────────────
@@ -215,7 +225,7 @@ function MissedExpensesCard({ onDone, onLog }: MissedExpensesCardProps) {
             activeOpacity={0.8}
           >
             <View style={missedStyles.manualPlusCircle}>
-              <Text style={missedStyles.manualPlus}>+</Text>
+              <Image source={missedManualInputIcon} style={missedStyles.manualPlusIcon} contentFit="contain" />
             </View>
             <Text style={missedStyles.manualLabel}>Manual Input</Text>
           </TouchableOpacity>
@@ -515,8 +525,8 @@ const RULER_PAD   = CONTENT_W / 2;
 const TICK_UNIT   = 14;
 const TICK_SHORT  = 9;
 const TICK_TALL   = 20;
-const RULER_BELOW = 16;   // px below baseline for labels
-const RULER_CLIP_H = TICK_TALL + 30 + RULER_BELOW; // icons(30) + ticks(20) + labels(16) = 66
+const RULER_BELOW = 32;   // px below baseline for labels
+const RULER_CLIP_H = TICK_TALL + 30 + RULER_BELOW; // icons(30) + ticks(20) + labels
 
 interface ScrubItem extends LocationItem {
   isNothing: boolean;
@@ -835,9 +845,6 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
             {/* Price pill — fixed at center, sitting on the baseline */}
             <View style={styles.pricePillAnchor} pointerEvents="none">
               <View style={styles.pricePill}>
-                {!selectedIsNothing && (
-                  <Image source={moneySmallIcon} style={styles.pricePillIcon} contentFit="contain" />
-                )}
                 <Text style={[styles.pricePillTxt, selectedIsNothing && { color: GRAY_TEXT }]}>
                   {selectedIsNothing ? 'skip' : `$${selectedPrice}`}
                 </Text>
@@ -1256,7 +1263,8 @@ const missedStyles = StyleSheet.create({
     backgroundColor: '#ffe6e2',
     alignItems: 'center', justifyContent: 'center',
   },
-  manualPlus:  { fontSize: 14, color: DARK_RED, lineHeight: 18 },
+  manualPlus:     { fontSize: 14, color: DARK_RED, lineHeight: 18 },
+  manualPlusIcon: { width: 10, height: 10 },
   manualLabel: { fontSize: 10, color: DARK_RED },
 
   doneBtn: {
