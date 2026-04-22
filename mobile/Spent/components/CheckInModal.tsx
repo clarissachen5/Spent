@@ -36,6 +36,27 @@ const moneySmallIcon      = require('../assets/icons/moneySmall.svg');
 const transportationIcon  = require('../assets/icons/transportationIcon.svg');
 const entertainmentIcon   = require('../assets/icons/entertainmentIcon.svg');
 const bagIcon             = require('../assets/icons/bagIcon.svg');
+const otherIcon           = require('../assets/icons/otherIcon.svg');
+
+// ── Figma tier icons (per category) ──────────────────────────────────────────
+const foodTier1Icon           = require('../assets/icons/food_tier1.svg');
+const foodTier2Icon           = require('../assets/icons/food_tier2.svg');
+const foodTier3Icon           = require('../assets/icons/food_tier3.svg');
+const coffeeTier1Icon         = require('../assets/icons/coffee_tier1.svg');
+const coffeeTier2Icon         = require('../assets/icons/coffee_tier2.svg');
+const coffeeTier3Icon         = require('../assets/icons/coffee_tier3.svg');
+const shoppingTier1Icon       = require('../assets/icons/shopping_tier1.svg');
+const shoppingTier2Icon       = require('../assets/icons/shopping_tier2.svg');
+const shoppingTier3Icon       = require('../assets/icons/shopping_tier3.svg');
+const entertainmentTier1Icon  = require('../assets/icons/entertainment_tier1.svg');
+const entertainmentTier2Icon  = require('../assets/icons/entertainment_tier2.svg');
+const entertainmentTier3Icon  = require('../assets/icons/entertainment_tier3.svg');
+const transportationTier1Icon = require('../assets/icons/transportation_tier1.svg');
+const transportationTier2Icon = require('../assets/icons/transportation_tier2.svg');
+const transportationTier3Icon = require('../assets/icons/transportation_tier3.svg');
+const otherTier1Icon          = require('../assets/icons/other_tier1.svg');
+const otherTier2Icon          = require('../assets/icons/other_tier2.svg');
+const otherTier3Icon          = require('../assets/icons/other_tier3.svg');
 
 // ── Figma item icons ──────────────────────────────────────────────────────────
 const smallCoffeeIcon  = require('../assets/icons/smallCoffee.svg');
@@ -109,9 +130,9 @@ const LOCATIONS: Location[] = [
     address: '279 Harvard St, Brookline, MA', neighborhood: 'Coolidge Corner, MA',
     icon: shoppingIcon, accentColor: '#F0FBF5',
     items: [
-      { icon: shoppingIcon, label: 'bookmark',  price: 3  },
-      { icon: shoppingIcon, label: 'paperback', price: 15 },
-      { icon: shoppingIcon, label: 'hardcover', price: 28 },
+      { icon: shoppingTier1Icon, label: 'bookmark',  price: 3  },
+      { icon: shoppingTier2Icon, label: 'paperback', price: 15 },
+      { icon: shoppingTier3Icon, label: 'hardcover', price: 28 },
     ],
   },
   {
@@ -119,9 +140,9 @@ const LOCATIONS: Location[] = [
     address: '1700 Washington St, Boston, MA', neighborhood: 'South End, MA',
     icon: foodIcon, accentColor: '#F5F0FF',
     items: [
-      { icon: foodIcon, label: 'wine glass', price: 12 },
-      { icon: foodIcon, label: 'appetizer',  price: 16 },
-      { icon: foodIcon, label: 'entrée',     price: 28 },
+      { icon: foodTier1Icon, label: 'wine glass', price: 12 },
+      { icon: foodTier2Icon, label: 'appetizer',  price: 16 },
+      { icon: foodTier3Icon, label: 'entrée',     price: 28 },
     ],
   },
   {
@@ -129,9 +150,9 @@ const LOCATIONS: Location[] = [
     address: '36 JFK St, Cambridge, MA', neighborhood: 'Harvard Square, MA',
     icon: shoppingIcon, accentColor: '#FFFBF0',
     items: [
-      { icon: shoppingIcon, label: 'snacks',     price: 5  },
-      { icon: shoppingIcon, label: 'toiletries', price: 12 },
-      { icon: shoppingIcon, label: 'medicine',   price: 25 },
+      { icon: shoppingTier1Icon, label: 'snacks',     price: 5  },
+      { icon: shoppingTier2Icon, label: 'toiletries', price: 12 },
+      { icon: shoppingTier3Icon, label: 'medicine',   price: 25 },
     ],
   },
 ];
@@ -143,6 +164,8 @@ interface MissedCategory {
   bg:        string;
   textColor: string;
   category:  string; // maps to CheckInResult.category
+  isManual?: boolean;
+  border?:   string;
 }
 
 const MISSED_CATEGORIES: MissedCategory[] = [
@@ -153,7 +176,125 @@ const MISSED_CATEGORIES: MissedCategory[] = [
   { name: 'Shopping Centers', icon: missedShoppingCentersIcon, bg: '#fff6d6', textColor: '#4f090b', category: 'Shopping'       },
   { name: 'Food Trucks',      icon: missedFoodTrucksIcon,      bg: '#eefbfd', textColor: '#0a2627', category: 'Food'           },
   { name: 'Subscriptions',    icon: missedSubscriptionsIcon,   bg: '#f8eeff', textColor: '#400981', category: 'Entertainment'  },
+  { name: 'Manual Input',     icon: missedManualInputIcon,     bg: '#ffffff', textColor: DARK_RED,  category: 'Other', isManual: true, border: DARK_RED },
 ];
+
+// ── Category scrub items (Figma tier icons) ───────────────────────────────────
+interface MissedScrubItem { icon: any; label: string; price: number; }
+
+const CATEGORY_SCRUB_ITEMS: Record<string, MissedScrubItem[]> = {
+  'Food': [
+    { icon: foodTier1Icon,           label: 'snack',  price: 8  },
+    { icon: foodTier2Icon,           label: 'meal',   price: 20 },
+    { icon: foodTier3Icon,           label: 'feast',  price: 45 },
+  ],
+  'Coffee': [
+    { icon: coffeeTier1Icon,         label: 'small',  price: 3  },
+    { icon: coffeeTier2Icon,         label: 'medium', price: 6  },
+    { icon: coffeeTier3Icon,         label: 'large',  price: 10 },
+  ],
+  'Shopping': [
+    { icon: shoppingTier1Icon,       label: 'small',  price: 20  },
+    { icon: shoppingTier2Icon,       label: 'medium', price: 60  },
+    { icon: shoppingTier3Icon,       label: 'big',    price: 120 },
+  ],
+  'Entertainment': [
+    { icon: entertainmentTier1Icon,  label: 'budget',  price: 10 },
+    { icon: entertainmentTier2Icon,  label: 'regular', price: 30 },
+    { icon: entertainmentTier3Icon,  label: 'splurge', price: 60 },
+  ],
+  'Transportation': [
+    { icon: transportationTier1Icon, label: 'short',  price: 5  },
+    { icon: transportationTier2Icon, label: 'medium', price: 20 },
+    { icon: transportationTier3Icon, label: 'long',   price: 50 },
+  ],
+  'Other': [
+    { icon: otherTier1Icon,          label: 'small',  price: 10 },
+    { icon: otherTier2Icon,          label: 'medium', price: 30 },
+    { icon: otherTier3Icon,          label: 'large',  price: 60 },
+  ],
+};
+
+function getScrubItems(category: string): MissedScrubItem[] {
+  return CATEGORY_SCRUB_ITEMS[category] ?? CATEGORY_SCRUB_ITEMS['Other'];
+}
+
+function buildMissedTicks(numItems: number) {
+  const rulerW = RULER_PAD + (numItems - 1) * ITEM_GAP + RULER_PAD + ENDLESS_EXTRA;
+  const result: { x: number; height: number }[] = [];
+  for (let x = 0; x <= rulerW; x += TICK_UNIT) {
+    const nearItem = Array.from({ length: numItems }).some(
+      (_, i) => Math.abs(RULER_PAD + i * ITEM_GAP - x) < TICK_UNIT / 2,
+    );
+    result.push({ x, height: nearItem ? TICK_TALL : TICK_SHORT });
+  }
+  return result;
+}
+
+function MissedScrubber({ items, onValueChange }: {
+  items: MissedScrubItem[];
+  onValueChange: (price: number) => void;
+}) {
+  const [displayPrice, setDisplayPrice] = useState(items[0]?.price ?? 0);
+  const scrubStart  = useSharedValue(0);
+  const scrubOffset = useSharedValue(0); // start at item[0]
+  const prices  = useMemo(() => items.map(i => i.price), [items]);
+  const ticks   = useMemo(() => buildMissedTicks(items.length), [items.length]);
+  const rulerW  = RULER_PAD + (items.length - 1) * ITEM_GAP + RULER_PAD + ENDLESS_EXTRA;
+  const minOff  = -((items.length - 1) * ITEM_GAP + ENDLESS_EXTRA); // endless right
+
+  const updateFromOffset = (off: number) => {
+    const val = computeValueFromOffset(off, prices);
+    setDisplayPrice(val.price);
+    onValueChange(val.price);
+  };
+
+  const scrubGesture = Gesture.Pan()
+    .onBegin(() => { scrubStart.value = scrubOffset.value; })
+    .onUpdate(e => {
+      const snapped = Math.round((scrubStart.value + e.translationX) / TICK_UNIT) * TICK_UNIT;
+      scrubOffset.value = Math.max(minOff, Math.min(0, snapped));
+      runOnJS(updateFromOffset)(scrubOffset.value);
+    })
+    .onEnd(() => runOnJS(updateFromOffset)(scrubOffset.value));
+
+  const rulerAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: scrubOffset.value }],
+  }));
+
+  return (
+    <View style={styles.scrubContainer}>
+      <View style={styles.scrubClip}>
+        <GestureDetector gesture={scrubGesture}>
+          <Animated.View style={[{ width: rulerW, height: RULER_CLIP_H }, rulerAnimStyle]}>
+            {ticks.map((tick, idx) => (
+              <View key={idx} style={{
+                position: 'absolute', left: tick.x, bottom: RULER_BELOW,
+                width: 1.5, height: tick.height, backgroundColor: TICK_COLOR,
+              }} />
+            ))}
+            <View style={{ position: 'absolute', bottom: RULER_BELOW, left: 0, width: rulerW, height: 1, backgroundColor: TICK_COLOR }} />
+            {items.map((item, i) => (
+              <View key={i} style={{ position: 'absolute', left: RULER_PAD + i * ITEM_GAP - 10, bottom: TICK_TALL + RULER_BELOW + 8, alignItems: 'center', width: 20 }}>
+                <Image source={item.icon} style={styles.scrubIcon} contentFit="contain" />
+              </View>
+            ))}
+            {items.map((item, i) => (
+              <View key={`lbl-${i}`} style={{ position: 'absolute', left: RULER_PAD + i * ITEM_GAP - 40, bottom: 0, width: 80, alignItems: 'center' }}>
+                <Text style={styles.scrubLabel}>{item.label}</Text>
+              </View>
+            ))}
+          </Animated.View>
+        </GestureDetector>
+      </View>
+      <View style={styles.pricePillAnchor} pointerEvents="none">
+        <View style={styles.pricePill}>
+          <Text style={styles.pricePillTxt}>${displayPrice}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
 
 // ── MissedExpensesCard ────────────────────────────────────────────────────────
 interface MissedExpensesCardProps {
@@ -163,31 +304,37 @@ interface MissedExpensesCardProps {
 
 function MissedExpensesCard({ onDone, onLog }: MissedExpensesCardProps) {
   type Mode = 'grid' | 'tile' | 'manual';
-  const [mode,        setMode]        = useState<Mode>('grid');
-  const [selected,    setSelected]    = useState<MissedCategory | null>(null);
-  const [amountInput, setAmountInput] = useState('');
-  const [manualName,  setManualName]  = useState('');
-  const [logged,      setLogged]      = useState<string | null>(null);
+  const [mode,        setMode]       = useState<Mode>('grid');
+  const [selected,    setSelected]   = useState<MissedCategory | null>(null);
+  const [scrubAmount, setScrubAmount] = useState(0);
+  const [manualName,  setManualName] = useState('');
+  const [logged,      setLogged]     = useState<string | null>(null);
 
   const resetToGrid = () => {
     setMode('grid');
     setSelected(null);
-    setAmountInput('');
+    setScrubAmount(0);
     setManualName('');
   };
 
   const handleTileTap = (cat: MissedCategory) => {
-    setSelected(cat);
-    setAmountInput('');
-    setMode('tile');
+    const items = getScrubItems(cat.isManual ? 'Other' : cat.category);
+    setScrubAmount(items[0].price);
+    setManualName('');
+    if (cat.isManual) {
+      setMode('manual');
+    } else {
+      setSelected(cat);
+      setMode('tile');
+    }
   };
 
   const handleLog = () => {
-    const amt = parseFloat(amountInput);
-    if (!amt || amt <= 0) return;
-    const name     = mode === 'manual' ? manualName.trim() || 'Manual Entry' : selected!.name;
-    const category = mode === 'manual' ? 'Other'                              : selected!.category;
-    onLog(name, category, amt);
+    if (scrubAmount <= 0) return;
+    const customName = manualName.trim();
+    const name     = mode === 'manual' ? customName || 'Manual Entry' : customName || selected!.name;
+    const category = mode === 'manual' ? 'Other' : selected!.category;
+    onLog(name, category, scrubAmount);
     setLogged(name);
     setTimeout(() => { setLogged(null); resetToGrid(); }, 1000);
   };
@@ -207,7 +354,11 @@ function MissedExpensesCard({ onDone, onLog }: MissedExpensesCardProps) {
               {row.map(cat => (
                 <TouchableOpacity
                   key={cat.name}
-                  style={[missedStyles.tile, { backgroundColor: cat.bg }]}
+                  style={[
+                    missedStyles.tile,
+                    { backgroundColor: cat.bg },
+                    cat.border ? { borderWidth: 1.5, borderColor: cat.border } : undefined,
+                  ]}
                   onPress={() => handleTileTap(cat)}
                   activeOpacity={0.75}
                 >
@@ -217,19 +368,6 @@ function MissedExpensesCard({ onDone, onLog }: MissedExpensesCardProps) {
               ))}
             </View>
           ))}
-
-          {/* Manual Input */}
-          <TouchableOpacity
-            style={missedStyles.manualBtn}
-            onPress={() => { setMode('manual'); setAmountInput(''); setManualName(''); }}
-            activeOpacity={0.8}
-          >
-            <View style={missedStyles.manualPlusCircle}>
-              <Image source={missedManualInputIcon} style={missedStyles.manualPlusIcon} contentFit="contain" />
-            </View>
-            <Text style={missedStyles.manualLabel}>Manual Input</Text>
-          </TouchableOpacity>
-
           <TouchableOpacity style={missedStyles.doneBtn} onPress={onDone} activeOpacity={0.8}>
             <Text style={missedStyles.doneBtnTxt}>Done</Text>
           </TouchableOpacity>
@@ -239,63 +377,59 @@ function MissedExpensesCard({ onDone, onLog }: MissedExpensesCardProps) {
   }
 
   // ── Tile / Manual input view ──
-  const tileColor = selected?.textColor ?? DARK_RED;
-  const tileBg    = selected?.bg        ?? '#ffe6e2';
+  const tileColor  = selected?.textColor ?? DARK_RED;
+  const tileBg     = selected?.bg        ?? '#ffe6e2';
+  const scrubItems = getScrubItems(mode === 'manual' ? 'Other' : (selected?.category ?? 'Other'));
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'position' : undefined}>
-      <View style={missedStyles.card}>
-        <TouchableOpacity onPress={resetToGrid} style={missedStyles.backRow} hitSlop={12}>
-          <Text style={missedStyles.backTxt}>← Back</Text>
-        </TouchableOpacity>
+    <View style={missedStyles.card}>
+      <TouchableOpacity onPress={resetToGrid} style={missedStyles.backRow} hitSlop={12}>
+        <Text style={missedStyles.backTxt}>← Back</Text>
+      </TouchableOpacity>
 
-        {/* Category display */}
-        {mode === 'tile' && selected ? (
-          <View style={[missedStyles.selectedTile, { backgroundColor: tileBg }]}>
-            <Image source={selected.icon} style={missedStyles.selectedIcon} contentFit="contain" />
-            <Text style={[missedStyles.selectedName, { color: tileColor }]}>{selected.name}</Text>
-          </View>
-        ) : (
-          <TextInput
-            style={missedStyles.nameInput}
-            placeholder="Expense name"
-            placeholderTextColor={GRAY_TEXT}
-            value={manualName}
-            onChangeText={setManualName}
-            autoFocus
-          />
-        )}
-
-        <Text style={missedStyles.amountLabel}>How much did you spend?</Text>
-        <View style={missedStyles.amountRow}>
-          <Text style={missedStyles.dollarSign}>$</Text>
-          <TextInput
-            style={missedStyles.amountInput}
-            placeholder="0.00"
-            placeholderTextColor={GRAY_TEXT}
-            value={amountInput}
-            onChangeText={setAmountInput}
-            keyboardType="decimal-pad"
-            autoFocus={mode === 'tile'}
-          />
+      {/* Category chip (tile mode) */}
+      {mode === 'tile' && selected && (
+        <View style={[missedStyles.selectedTile, { backgroundColor: tileBg }]}>
+          <Image source={selected.icon} style={missedStyles.selectedIcon} contentFit="contain" />
+          <Text style={[missedStyles.selectedName, { color: tileColor }]}>{selected.name}</Text>
         </View>
+      )}
 
-        {logged ? (
-          <View style={missedStyles.loggedPill}>
-            <Text style={missedStyles.loggedTxt}>✓ Logged {logged}</Text>
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={[missedStyles.logBtn, (!amountInput || parseFloat(amountInput) <= 0) && missedStyles.logBtnDisabled]}
-            onPress={handleLog}
-            disabled={!amountInput || parseFloat(amountInput) <= 0}
-            activeOpacity={0.8}
-          >
-            <Text style={missedStyles.logBtnTxt}>Log It</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </KeyboardAvoidingView>
+      {/* Name input */}
+      <Text style={missedStyles.amountLabel}>
+        {mode === 'tile' ? 'Item or location name' : 'Expense name'}
+      </Text>
+      <TextInput
+        style={missedStyles.nameInput}
+        placeholder={mode === 'tile' ? selected?.name ?? 'e.g. Uber Eats, Spotify…' : 'e.g. Amazon order…'}
+        placeholderTextColor={GRAY_TEXT}
+        value={manualName}
+        onChangeText={setManualName}
+        returnKeyType="done"
+      />
+
+      {/* Scrubber — replaces typed amount input */}
+      <MissedScrubber
+        key={selected?.category ?? 'manual'}
+        items={scrubItems}
+        onValueChange={setScrubAmount}
+      />
+
+      {logged ? (
+        <View style={missedStyles.loggedPill}>
+          <Text style={missedStyles.loggedTxt}>✓ Logged {logged}</Text>
+        </View>
+      ) : (
+        <TouchableOpacity
+          style={[missedStyles.logBtn, scrubAmount <= 0 && missedStyles.logBtnDisabled]}
+          onPress={handleLog}
+          disabled={scrubAmount <= 0}
+          activeOpacity={0.8}
+        >
+          <Text style={missedStyles.logBtnTxt}>LOG</Text>
+        </TouchableOpacity>
+      )}
+    </View>
   );
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -471,16 +605,16 @@ const budgetStyles = StyleSheet.create({
 
 // ── Generic price items per category (used for detected locations) ────────────
 const CATEGORY_ITEMS: Record<string, LocationItem[]> = {
-  Coffee:         [{ icon: smallCoffeeIcon, label: 'small coffee', price: 3 }, { icon: mediumCoffeeIcon, label: 'medium coffee', price: 6 }, { icon: largeCoffeeIcon, label: 'coffee + pastry', price: 11 }],
-  Food:           [{ icon: foodIcon, label: 'snack', price: 8 }, { icon: foodIcon, label: 'meal', price: 16 }, { icon: foodIcon, label: 'large meal', price: 28 }],
-  Shopping:       [{ icon: shoppingIcon, label: 'small purchase', price: 10 }, { icon: shoppingIcon, label: 'purchase', price: 25 }, { icon: shoppingIcon, label: 'big purchase', price: 50 }],
-  Entertainment:  [{ icon: foodIcon, label: 'ticket', price: 15 }, { icon: foodIcon, label: 'event', price: 30 }, { icon: foodIcon, label: 'experience', price: 60 }],
-  Transportation: [{ icon: shoppingIcon, label: 'ride', price: 5 }, { icon: shoppingIcon, label: 'trip', price: 15 }, { icon: shoppingIcon, label: 'day pass', price: 30 }],
-  Other:          [{ icon: shoppingIcon, label: 'small', price: 5 }, { icon: shoppingIcon, label: 'medium', price: 15 }, { icon: shoppingIcon, label: 'large', price: 30 }],
+  Coffee:         [{ icon: coffeeTier1Icon, label: 'small coffee', price: 3 }, { icon: coffeeTier2Icon, label: 'medium coffee', price: 6 }, { icon: coffeeTier3Icon, label: 'coffee + pastry', price: 11 }],
+  Food:           [{ icon: foodTier1Icon, label: 'snack', price: 8 }, { icon: foodTier2Icon, label: 'meal', price: 16 }, { icon: foodTier3Icon, label: 'large meal', price: 28 }],
+  Shopping:       [{ icon: shoppingTier1Icon, label: 'small purchase', price: 10 }, { icon: shoppingTier2Icon, label: 'purchase', price: 25 }, { icon: shoppingTier3Icon, label: 'big purchase', price: 50 }],
+  Entertainment:  [{ icon: entertainmentTier1Icon, label: 'ticket', price: 15 }, { icon: entertainmentTier2Icon, label: 'event', price: 30 }, { icon: entertainmentTier3Icon, label: 'experience', price: 60 }],
+  Transportation: [{ icon: transportationTier1Icon, label: 'ride', price: 5 }, { icon: transportationTier2Icon, label: 'trip', price: 15 }, { icon: transportationTier3Icon, label: 'day pass', price: 30 }],
+  Other:          [{ icon: otherTier1Icon, label: 'small', price: 5 }, { icon: otherTier2Icon, label: 'medium', price: 15 }, { icon: otherTier3Icon, label: 'large', price: 30 }],
 };
 const CATEGORY_ICON: Record<string, any> = {
   Coffee: coffeeIcon, Food: foodIcon, Shopping: shoppingIcon,
-  Entertainment: foodIcon, Transportation: shoppingIcon, Other: shoppingIcon,
+  Entertainment: entertainmentIcon, Transportation: transportationIcon, Other: otherIcon,
 };
 const CATEGORY_COLOR: Record<string, string> = {
   Coffee: PINK_BG, Food: '#F5F0FF', Shopping: '#F0FBF5',
@@ -1299,26 +1433,13 @@ const missedStyles = StyleSheet.create({
     color: '#1e1d19',
   },
   amountLabel: { fontSize: 11, color: GRAY_TEXT, marginTop: 4 },
-  amountRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dollarSign: { fontSize: 22, fontWeight: '600', color: DARK_RED },
-  amountInput: {
-    flex: 1,
-    fontSize: 32,
-    fontWeight: '700',
-    color: DARK_RED,
-    borderBottomWidth: 2,
-    borderBottomColor: DARK_RED,
-    paddingBottom: 4,
-  },
   logBtn: {
-    marginTop: 12,
-    backgroundColor: DARK_RED,
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderWidth: 1, borderColor: DARK_RED,
+    borderRadius: 20, paddingVertical: 6,
     alignItems: 'center',
   },
   logBtnDisabled: { opacity: 0.4 },
-  logBtnTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  logBtnTxt: { fontSize: 16, fontWeight: '600', color: DARK_RED },
 
   loggedPill: {
     marginTop: 12,
