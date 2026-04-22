@@ -13,7 +13,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
-import MonthlySummaryModal from '../../components/MonthlySummaryModal';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const DARK_GREEN = '#0a542f';
@@ -50,7 +49,6 @@ export default function SettingsScreen() {
   const [customGoalInput, setCustomGoalInput] = useState('');
   const [saving,          setSaving]          = useState(false);
   const [saved,           setSaved]           = useState(false);
-  const [showSummary,     setShowSummary]     = useState(false);
 
   // Populate fields from loaded profile, restoring any custom items
   useEffect(() => {
@@ -208,17 +206,6 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* ── Monthly summary ── */}
-        <TouchableOpacity
-          style={styles.summaryBtn}
-          onPress={() => setShowSummary(true)}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.summaryBtnText}>This Month's Summary</Text>
-        </TouchableOpacity>
-
-        <MonthlySummaryModal visible={showSummary} onClose={() => setShowSummary(false)} />
-
         {/* ── Save button ── */}
         <TouchableOpacity
           style={[
@@ -348,20 +335,8 @@ const styles = StyleSheet.create({
     color: LIME_GREEN,
     lineHeight: 22,
   },
-  summaryBtn: {
-    marginTop: 28,
-    backgroundColor: DARK_GREEN,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  summaryBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: LIME_GREEN,
-  },
   saveBtn: {
-    marginTop: 12,
+    marginTop: 28,
     backgroundColor: LIME_GREEN,
     borderRadius: 14,
     paddingVertical: 16,

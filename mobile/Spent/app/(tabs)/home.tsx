@@ -13,6 +13,7 @@ import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import CheckInModal from '../../components/CheckInModal';
+import PredictiveGraphRow from '../../components/PredictiveGraphRow';
 import { API_BASE_URL } from '../../constants/config';
 import { getFirestore, setDoc, doc } from 'firebase/firestore';
 import { app } from '../../src/config/firebase';
@@ -52,6 +53,32 @@ const CATEGORY_CONFIG = [
 
 // Fallback max per category when no budget has been saved yet
 const DEFAULT_CATEGORY_MAX = 100;
+
+// Per-category colors for the category bars (figma "April Spending" section)
+const CATEGORY_BAR: Record<string, string> = {
+  Food:           '#9ED3F0',
+  Shopping:       '#FCB842',
+  Coffee:         '#F4B8C8',
+  Entertainment:  '#C9A8E8',
+  Transportation: '#FFCBA4',
+  Other:          '#F4A0A0',
+};
+const CATEGORY_TRACK: Record<string, string> = {
+  Food:           '#e4f3ff',
+  Shopping:       '#fff1d6',
+  Coffee:         '#fde4ec',
+  Entertainment:  '#ece0f8',
+  Transportation: '#ffe7d4',
+  Other:          '#fde0e0',
+};
+const CATEGORY_PILL_BG: Record<string, string> = {
+  Food:           '#e4f3ff',
+  Shopping:       '#fff1d6',
+  Coffee:         '#fde4ec',
+  Entertainment:  '#ece0f8',
+  Transportation: '#ffe7d4',
+  Other:          '#fde0e0',
+};
 
 // Returns 7 consecutive dates starting at today + dayOffset
 function getVisibleDates(dayOffset: number = 0): Date[] {
@@ -121,8 +148,12 @@ export default function HomeScreen() {
 
   const totalSaved = 362;
   const streak = 3;
+  const monthNameUpper = new Date()
+    .toLocaleString('default', { month: 'long' })
+    .toUpperCase();
   const [dayOffset, setDayOffset] = useState(0);
   const [checkInVisible, setCheckInVisible] = useState(false);
+  const [graphWidth, setGraphWidth] = useState(0);
   const panStartOffset = useRef(0);
 
   useEffect(() => {
@@ -290,47 +321,6 @@ export default function HomeScreen() {
       contentContainerStyle={[styles.content, { paddingTop: top + 20 }]}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── Week navigation ── */}
-      <View style={styles.weekSection}>
-        {/* Today pill */}
-        <View style={styles.todayPill}>
-          <TouchableOpacity onPress={() => setDayOffset(prev => prev - 7)}>
-            <Image source={chevronLeft} style={[styles.chevronImg, { transform: [{ rotate: '180deg' }] }]} contentFit="contain" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setDayOffset(0)}>
-            <Text style={styles.todayLabel}>Today</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setDayOffset(prev => prev + 7)}>
-            <Image source={chevronRight} style={styles.chevronImg} contentFit="contain" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Day cards — swipeable day by day */}
-        <GestureDetector gesture={Gesture.Pan()
-          .runOnJS(true)
-          .onBegin(() => { panStartOffset.current = dayOffset; })
-          .onUpdate(e => {
-            // ~48px per day so dragging feels 1:1 with the cards
-            const delta = Math.round(-e.translationX / 48);
-            setDayOffset(panStartOffset.current + delta);
-          })
-        }>
-          <View style={styles.weekRow}>
-            {visibleDates.map((date, i) => {
-              const dollars = predictedTotalsByDate[toDateStr(date)] || 0;
-              return (
-                <View key={i} style={styles.dayCard}>
-                  <Text style={styles.dayLabel}>{DAY_NAMES[date.getDay()]}</Text>
-                  <View style={[styles.dayCircle, { backgroundColor: getHeatmapColor(dollars) }]}>
-                    <Text style={styles.dayNumber}>{date.getDate()}</Text>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </GestureDetector>
-      </View>
-
       {/* ── Hero card ── */}
       <View style={styles.heroCard}>
         {/* Content row */}
@@ -384,48 +374,99 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* ── Your Spending header ── */}
+      {/* ── Predictive spending graph ── */}
       <View style={styles.sectionRow}>
-        <View style={styles.sectionTitleGroup}>
-          <Image source={bagIcon} style={styles.sectionIconImg} contentFit="contain" />
-          <Text style={styles.sectionTitle}>Your Spending</Text>
+        <View style={styles.predictivePill}>
+          <Text style={styles.predictivePillText}>PREDICTIVE SPENDING</Text>
         </View>
-        <TouchableOpacity style={styles.seeMorePill}>
-          <Text style={styles.seeMoreText}>see more</Text>
+        <View style={styles.seeMorePillMuted}>
+          <Text style={styles.seeMoreTextMuted}>see more</Text>
           <Image source={seeMoreArrow} style={styles.seeMoreArrowImg} contentFit="contain" />
-        </TouchableOpacity>
+        </View>
+      </View>
+
+      <GestureDetector gesture={Gesture.Pan()
+        .runOnJS(true)
+        .minDistance(20)
+        .onBegin(() => { panStartOffset.current = dayOffset; })
+        .onEnd(e => {
+          if (Math.abs(e.translationX) < 40) return;
+          if (e.translationX < 0) setDayOffset(panStartOffset.current + 7);
+          else setDayOffset(panStartOffset.current - 7);
+        })
+      }>
+        <View
+          style={styles.graphCard}
+          onLayout={e => setGraphWidth(e.nativeEvent.layout.width)}
+        >
+          {graphWidth > 0 && (() => {
+            const eventsArr   = visibleDates.map(d => eventCounts[toDateStr(d)] || 0);
+            const spendingArr = visibleDates.map(d => predictedTotalsByDate[toDateStr(d)] || 0);
+            return (
+              <PredictiveGraphRow
+                width={graphWidth}
+                height={78}
+                events={eventsArr}
+                spending={spendingArr}
+                maxEvents={Math.max(1, ...eventsArr)}
+                maxSpending={Math.max(1, ...spendingArr)}
+                dayLabels={visibleDates.map(d => DAY_NAMES[d.getDay()])}
+                dayNumbers={visibleDates.map(d => d.getDate())}
+                showDayLabels
+              />
+            );
+          })()}
+        </View>
+      </GestureDetector>
+
+      {/* ── Month spending header ── */}
+      <View style={styles.sectionRow}>
+        <View style={styles.predictivePill}>
+          <Text style={styles.predictivePillText}>
+            {monthNameUpper} SPENDING
+          </Text>
+        </View>
+        <View style={styles.seeMorePillMuted}>
+          <Text style={styles.seeMoreTextMuted}>see more</Text>
+          <Image source={seeMoreArrow} style={styles.seeMoreArrowImg} contentFit="contain" />
+        </View>
       </View>
 
       {/* ── Spending categories card ── */}
       <View style={styles.categoriesCard}>
         {CATEGORY_CONFIG.map((cat, i) => {
           const amount = categoryTotals[cat.name] ?? 0;
-          const max    = monthlyBudget[cat.name] || DEFAULT_CATEGORY_MAX;
+          const userMax = monthlyBudget[cat.name];
+          const max    = userMax || DEFAULT_CATEGORY_MAX;
           const fill   = Math.min(amount / max, 1);
+          const bar    = CATEGORY_BAR[cat.name] ?? CATEGORY_BAR.Other;
+          const track  = CATEGORY_TRACK[cat.name] ?? CATEGORY_TRACK.Other;
+          const pill   = CATEGORY_PILL_BG[cat.name] ?? CATEGORY_PILL_BG.Other;
           return (
             <View
               key={cat.name}
               style={[
-                styles.categoryRow,
-                i < CATEGORY_CONFIG.length - 1 && styles.categoryDivider,
+                styles.categoryRowNew,
+                i < CATEGORY_CONFIG.length - 1 && styles.categoryDividerNew,
               ]}
             >
-              <Image source={cat.icon} style={styles.categoryIcon} contentFit="contain" />
-              <Text style={styles.categoryName}>{cat.name}</Text>
-
-              {/* Progress bar — read-only, driven by check-in data */}
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${fill * 100}%` }]} />
-                <View style={[styles.budgetMarker, { left: `${fill * 100}%` }]}>
-                  <Image source={budgetMarkerLine} style={styles.budgetMarkerImg} contentFit="fill" />
+              <View style={styles.categoryTopRow}>
+                <Image source={cat.icon} style={styles.categoryIconNew} contentFit="contain" />
+                <Text style={styles.categoryNameNew}>{cat.name}</Text>
+                <View style={[styles.amountPill, { backgroundColor: pill }]}>
+                  <Text style={styles.amountPillText}>
+                    ${amount}
+                    {userMax ? <Text style={styles.amountPillMax}>/{userMax}</Text> : null}
+                  </Text>
                 </View>
               </View>
-
-              <View style={styles.amountGroup}>
-                <Image source={dollarSignSmall} style={styles.dollarSmall} contentFit="contain" />
-                <Text style={styles.categoryAmount}>
-                  {amount}<Text style={styles.categoryMax}>/{max}</Text>
-                </Text>
+              <View style={[styles.barTrack, { backgroundColor: track }]}>
+                <View
+                  style={[
+                    styles.barFill,
+                    { width: `${fill * 100}%`, backgroundColor: bar },
+                  ]}
+                />
               </View>
             </View>
           );
@@ -434,8 +475,9 @@ export default function HomeScreen() {
 
       {/* ── Upcoming Expenses header ── */}
       <View style={styles.sectionRow}>
-        <Image source={calendarIcon} style={styles.calendarIconImg} contentFit="contain" />
-        <Text style={styles.sectionTitle}>Upcoming Expenses</Text>
+        <View style={styles.predictivePill}>
+          <Text style={styles.predictivePillText}>UPCOMING EXPENSES</Text>
+        </View>
       </View>
 
       {/* ── Ollama predictions ── */}
@@ -695,7 +737,30 @@ const styles = StyleSheet.create({
     color: BLACK,
     fontWeight: '400',
   },
+  predictivePill: {
+    borderWidth: 1.5,
+    borderColor: DARK_GREEN,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 100,
+    backgroundColor: '#fff',
+  },
+  predictivePillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: DARK_GREEN,
+    letterSpacing: 0.5,
+  },
   seeMorePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: LIGHT_GRAY,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    gap: 4,
+  },
+  seeMorePillMuted: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: LIGHT_GRAY,
@@ -708,6 +773,22 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: GRAY_TEXT,
     fontWeight: '700',
+  },
+  seeMoreTextMuted: {
+    fontSize: 10,
+    color: GRAY_TEXT,
+    fontWeight: '700',
+  },
+  graphCard: {
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   seeMoreArrowImg: {
     width: 8,
@@ -735,6 +816,53 @@ const styles = StyleSheet.create({
     paddingBottom: 7,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#f0f0f0',
+  },
+  categoryRowNew: {
+    gap: 6,
+  },
+  categoryDividerNew: {
+    paddingBottom: 12,
+  },
+  categoryTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  categoryIconNew: {
+    width: 22,
+    height: 22,
+  },
+  categoryNameNew: {
+    flex: 1,
+    fontSize: 13,
+    color: BLACK,
+    fontWeight: '500',
+  },
+  amountPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 100,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  amountPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: BLACK,
+  },
+  amountPillMax: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: GRAY_TEXT,
+  },
+  barTrack: {
+    height: 8,
+    borderRadius: 100,
+    overflow: 'hidden',
+  },
+  barFill: {
+    height: 8,
+    borderRadius: 100,
   },
   categoryIcon: {
     width: 20,
