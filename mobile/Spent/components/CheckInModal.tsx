@@ -11,8 +11,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  PanResponder,
 } from 'react-native';
-import Slider from '@react-native-community/slider';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -436,37 +436,107 @@ function MissedExpensesCard({ onDone, onLog }: MissedExpensesCardProps) {
 
 // ── Generic price items per category (used for detected locations) ────────────
 // ── Budget Estimate Card ──────────────────────────────────────────────────────
+const BUDGET_MAX = 1000; // will be replaced with user income later
+
 const BUDGET_CATEGORIES = [
-  { name: 'Food',           icon: foodIcon,           color: '#C8E8FF', max: 600 },
-  { name: 'Coffee',         icon: coffeeIcon,         color: '#F4B8C8', max: 200 },
-  { name: 'Shopping',       icon: bagIcon,            color: '#fcb842', max: 600 },
-  { name: 'Entertainment',  icon: entertainmentIcon,  color: '#C9A8E8', max: 400 },
-  { name: 'Transportation', icon: transportationIcon, color: '#FFCBA4', max: 400 },
-  { name: 'Other',          icon: shoppingIcon,       color: '#F4A0A0', max: 400 },
+  { name: 'Food',           icon: foodIcon,           thumbIcon: foodTier2Icon,          color: '#A8EAF6', lightColor: '#E8F9FD' },
+  { name: 'Coffee',         icon: coffeeIcon,         thumbIcon: coffeeTier2Icon,         color: '#FFB5DB', lightColor: '#FFF0F8' },
+  { name: 'Shopping',       icon: bagIcon,            thumbIcon: shoppingTier2Icon,       color: '#FED130', lightColor: '#FFF6D6' },
+  { name: 'Entertainment',  icon: entertainmentIcon,  thumbIcon: entertainmentTier2Icon,  color: '#DEABFF', lightColor: '#F8EEFF' },
+  { name: 'Transportation', icon: transportationIcon, thumbIcon: transportationTier2Icon, color: '#FFCBA4', lightColor: '#FFF5EE' },
+  { name: 'Other',          icon: otherIcon,          thumbIcon: otherTier2Icon,          color: '#F4A0A0', lightColor: '#FEF0F0' },
 ];
+
+// ── Budget Slider ─────────────────────────────────────────────────────────────
+const BUDGET_THUMB_D = 30;
+
+function BudgetSlider({
+  value, maxValue, accentColor, lightColor, thumbIcon, onValueChange, onDragStart, onDragEnd,
+}: {
+  value: number; maxValue: number; accentColor: string; lightColor: string;
+  thumbIcon: any; onValueChange: (v: number) => void;
+  onDragStart?: () => void; onDragEnd?: () => void;
+}) {
+  const [trackWidth, setTrackWidth] = useState(0);
+  const trackRef      = useRef(0);
+  const maxRef        = useRef(maxValue);
+  const grantPageX    = useRef(0);
+  const grantFillX    = useRef(0);
+  maxRef.current      = maxValue;
+
+  const ratio = trackRef.current > 0 ? Math.min(1, value / maxValue) : 0;
+  const fillW  = ratio * trackRef.current;
+  const thumbL = ratio * Math.max(0, trackRef.current - BUDGET_THUMB_D);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder:  () => true,
+      onPanResponderGrant: (evt) => {
+        onDragStart?.();
+        // Snap to wherever the finger lands
+        const x = Math.max(0, Math.min(trackRef.current, evt.nativeEvent.locationX));
+        grantPageX.current = evt.nativeEvent.pageX;
+        grantFillX.current = x;
+        onValueChange(Math.round((x / trackRef.current) * maxRef.current / 5) * 5);
+      },
+      onPanResponderMove: (evt) => {
+        // Delta from initial touch position — reliable all the way to the edges
+        const delta = evt.nativeEvent.pageX - grantPageX.current;
+        const x = Math.max(0, Math.min(trackRef.current, grantFillX.current + delta));
+        onValueChange(Math.round((x / trackRef.current) * maxRef.current / 5) * 5);
+      },
+      onPanResponderRelease:   () => onDragEnd?.(),
+      onPanResponderTerminate: () => onDragEnd?.(),
+    })
+  ).current;
+
+  return (
+    <View
+      style={bsStyles.container}
+      onLayout={e => { trackRef.current = e.nativeEvent.layout.width; setTrackWidth(e.nativeEvent.layout.width); }}
+      {...panResponder.panHandlers}
+    >
+      <View style={[bsStyles.track, { backgroundColor: lightColor }]}>
+        <View style={[bsStyles.fill, { backgroundColor: accentColor, width: fillW }]} />
+      </View>
+      {trackWidth > 0 && (
+        <View style={[bsStyles.thumb, { left: thumbL }]}>
+          <Image source={thumbIcon} style={bsStyles.thumbIcon} contentFit="contain" />
+        </View>
+      )}
+    </View>
+  );
+}
+
+const bsStyles = StyleSheet.create({
+  container: { height: 44, justifyContent: 'center' },
+  track:     { height: 8, borderRadius: 100, overflow: 'hidden' },
+  fill:      { height: 8, borderRadius: 100 },
+  thumb: {
+    position: 'absolute',
+    width: BUDGET_THUMB_D, height: BUDGET_THUMB_D,
+    borderRadius: BUDGET_THUMB_D / 2,
+    backgroundColor: '#fff',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.13, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 }, elevation: 4,
+  },
+  thumbIcon: { width: 20, height: 20 },
+});
 
 
 function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
   const { saveMonthlyBudget, monthlyBudget } = useAuth();
   const [amounts, setAmounts] = useState<Record<string, number>>(
-    Object.fromEntries(BUDGET_CATEGORIES.map(c => [c.name, monthlyBudget[c.name] ?? 0])),
+    Object.fromEntries(BUDGET_CATEGORIES.map(c => [c.name, Math.min(monthlyBudget[c.name] ?? 0, BUDGET_MAX)])),
   );
-  const [maxAmounts, setMaxAmounts] = useState<Record<string, number>>(
-    Object.fromEntries(BUDGET_CATEGORIES.map(c => [c.name, Math.max(c.max, (monthlyBudget[c.name] ?? 0) * 2 || c.max)])),
-  );
+  const [scrollEnabled, setScrollEnabled] = useState(true);
 
   const total = Object.values(amounts).reduce((s, v) => s + v, 0);
 
   const handleValueChange = (name: string, v: number) => {
-    const snapped = Math.round(v / 5) * 5;
-    setAmounts(prev => ({ ...prev, [name]: snapped }));
-    // expand max when within 15% of the right edge
-    setMaxAmounts(prev => {
-      if (snapped >= prev[name] * 0.85) {
-        return { ...prev, [name]: prev[name] * 2 };
-      }
-      return prev;
-    });
+    setAmounts(prev => ({ ...prev, [name]: Math.round(v / 5) * 5 }));
   };
 
   const handleSave = async () => {
@@ -484,27 +554,27 @@ function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
       <ScrollView
         showsVerticalScrollIndicator={false}
         style={{ width: '100%' }}
-        contentContainerStyle={{ gap: 14, paddingBottom: 8 }}
+        contentContainerStyle={{ gap: 10, paddingBottom: 8 }}
+        scrollEnabled={scrollEnabled}
       >
         {BUDGET_CATEGORIES.map(cat => (
-          <View key={cat.name} style={budgetStyles.categoryRow}>
+          <View key={cat.name} style={[budgetStyles.categoryRow, { borderColor: LIGHT_GRAY }]}>
             <View style={budgetStyles.categoryHeader}>
-              <View style={[budgetStyles.iconWrap, { backgroundColor: cat.color }]}>
+              <View style={[budgetStyles.iconWrap, { backgroundColor: cat.lightColor }]}>
                 <Image source={cat.icon} style={budgetStyles.catIcon} contentFit="contain" />
               </View>
               <Text style={budgetStyles.categoryName}>{cat.name}</Text>
-              <Text style={budgetStyles.categoryAmt}>${amounts[cat.name]}</Text>
+              <Text style={[budgetStyles.categoryAmt, { color: cat.color }]}>${amounts[cat.name]}</Text>
             </View>
-            <Slider
-              style={budgetStyles.slider}
+            <BudgetSlider
               value={amounts[cat.name]}
+              maxValue={BUDGET_MAX}
+              accentColor={cat.color}
+              lightColor={cat.lightColor}
+              thumbIcon={cat.thumbIcon}
               onValueChange={v => handleValueChange(cat.name, v)}
-              minimumValue={0}
-              maximumValue={maxAmounts[cat.name]}
-              step={5}
-              minimumTrackTintColor={DARK_GREEN}
-              maximumTrackTintColor="#E5E5E5"
-              thumbTintColor={DARK_GREEN}
+              onDragStart={() => setScrollEnabled(false)}
+              onDragEnd={() => setScrollEnabled(true)}
             />
           </View>
         ))}
@@ -551,7 +621,12 @@ const budgetStyles = StyleSheet.create({
     color: DARK_GREEN,
   },
   categoryRow: {
-    gap: 2,
+    gap: 6,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   categoryHeader: {
     flexDirection: 'row',
@@ -578,14 +653,8 @@ const budgetStyles = StyleSheet.create({
   categoryAmt: {
     fontSize: 13,
     fontWeight: '700',
-    color: DARK_GREEN,
     minWidth: 40,
     textAlign: 'right',
-  },
-  slider: {
-    width: '100%',
-    height: 32,
-    marginTop: -4,
   },
   saveBtn: {
     backgroundColor: DARK_GREEN,
