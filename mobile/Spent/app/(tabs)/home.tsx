@@ -93,6 +93,7 @@ export default function HomeScreen() {
   const { token: contextToken, checkInResults, predictions, mergePredictions, predictionsLoaded, pendingLocations, monthlyBudget } = useAuth();
   const token = contextToken ?? paramToken;
   const [trackingActive, setTrackingActive] = useState(false);
+  const [farmAspectRatio, setFarmAspectRatio] = useState(1);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -117,20 +118,19 @@ export default function HomeScreen() {
     return totals;
   }, [checkInResults]);
 
-  // Pick farm background based on actual spend vs monthly budget
-  const farmImage = useMemo(() => {
+  // Pick farm background + spending score based on actual spend vs monthly budget
+  const { farmImage, spendingScore } = useMemo(() => {
     const totalSpent  = Object.values(categoryTotals).reduce((s, v) => s + v, 0);
     const totalBudget = Object.values(monthlyBudget).reduce((s, v) => s + v, 0);
 
-    // No data yet — show the middle image
-    if (totalBudget === 0 || totalSpent === 0) return FARM_IMAGES[2];
+    if (totalBudget === 0 || totalSpent === 0) return { farmImage: FARM_IMAGES[2], spendingScore: 3 };
 
     const ratio = totalSpent / totalBudget;
-    if (ratio > 1.2) return FARM_IMAGES[0]; // really over → image 1
-    if (ratio > 1.0) return FARM_IMAGES[1]; // somewhat over → image 2
-    if (ratio > 0.8) return FARM_IMAGES[2]; // at threshold → image 3
-    if (ratio > 0.5) return FARM_IMAGES[3]; // somewhat under → image 4
-    return FARM_IMAGES[4];                  // significantly under → image 5
+    if (ratio > 1.2) return { farmImage: FARM_IMAGES[0], spendingScore: 1 };
+    if (ratio > 1.0) return { farmImage: FARM_IMAGES[1], spendingScore: 2 };
+    if (ratio > 0.8) return { farmImage: FARM_IMAGES[2], spendingScore: 3 };
+    if (ratio > 0.5) return { farmImage: FARM_IMAGES[3], spendingScore: 4 };
+    return { farmImage: FARM_IMAGES[4], spendingScore: 5 };
   }, [categoryTotals, monthlyBudget]);
 
   // Sum medium predicted spend per day
@@ -307,8 +307,20 @@ export default function HomeScreen() {
   }, [token, dayOffset, predictionsLoaded]);
 
   return (
+    <View style={styles.screen}>
+      {/* ── Farm background — full-width, natural height, pinned to top ── */}
+      <Image
+        source={farmImage}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, aspectRatio: farmAspectRatio }}
+        contentFit="fill"
+        onLoad={e => {
+          const { width, height } = e.source;
+          if (width && height) setFarmAspectRatio(width / height);
+        }}
+      />
+
     <ScrollView
-      style={styles.container}
+      style={styles.scrollView}
       contentContainerStyle={[styles.content, { paddingTop: top + 20 }]}
       showsVerticalScrollIndicator={false}
     >
@@ -353,14 +365,20 @@ export default function HomeScreen() {
         </GestureDetector>
       </View>
 
-      {/* ── Hero card ── */}
-      <View style={styles.heroCard}>
-        {/* Farm fills the entire card */}
-        <Image source={farmImage} style={StyleSheet.absoluteFillObject} contentFit="cover" />
+      {/* ── Farm transparent section — shows farm bg, overlays controls ── */}
+      <View style={styles.farmSection}>
+        {/* 5-step progress bar — bottom left, over pig sty */}
+        <View style={styles.progressBarRow}>
+          {[1, 2, 3, 4, 5].map(step => (
+            <View
+              key={step}
+              style={[styles.progressSegment, step <= spendingScore && styles.progressSegmentFilled]}
+            />
+          ))}
+        </View>
 
-        {/* Content row */}
-        <View style={styles.heroContent}>
-          {/* Check-in button + streak badge */}
+        {/* Check-in + streak — bottom right */}
+        <View style={styles.farmOverlayRight}>
           <View style={styles.checkInWrapper}>
             <TouchableOpacity
               style={styles.checkInButton}
@@ -369,7 +387,6 @@ export default function HomeScreen() {
               <Image source={clipboardIcon} style={styles.clipboardImg} contentFit="contain" />
               <Text style={styles.checkInLabel}>check in</Text>
             </TouchableOpacity>
-
             <View style={styles.streakBadge}>
               <Image source={flameIcon} style={styles.flameImg} contentFit="contain" />
               <Text style={styles.streakCount}>{streak}</Text>
@@ -475,6 +492,7 @@ export default function HomeScreen() {
         onClose={() => setCheckInVisible(false)}
       />
     </ScrollView>
+    </View>
   );
 }
 
@@ -489,9 +507,13 @@ const GRAY_TEXT   = '#a5a5a5';
 const BLACK       = '#1e1d19';
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  scrollView: {
+    flex: 1,
+    backgroundColor: 'transparent',
   },
   content: {
     padding: 20,
@@ -562,21 +584,35 @@ const styles = StyleSheet.create({
     color: '#000',
   },
 
-  // ── Hero card ───────────────────────────────────────────────────────────────
-  heroCard: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: MINT,
+  // ── Farm section (transparent — farm bg shows through) ──────────────────────
+  farmSection: {
     height: 220,
-  },
-  heroContent: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-end',
-    paddingTop: 50,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    flex: 1,
+    justifyContent: 'space-between',
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+  },
+  farmOverlayRight: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  progressBarRow: {
+    flexDirection: 'row',
+    gap: 5,
+    alignItems: 'center',
+  },
+  progressSegment: {
+    width: 22,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
+  },
+  progressSegmentFilled: {
+    backgroundColor: LIME_GREEN,
+    borderColor: LIME_GREEN,
   },
   checkInWrapper: {
     alignItems: 'center',
