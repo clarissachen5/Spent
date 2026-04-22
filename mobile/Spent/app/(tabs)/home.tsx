@@ -355,47 +355,6 @@ export default function HomeScreen() {
       contentContainerStyle={[styles.content, { paddingTop: top + 20 }]}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── Week navigation ── */}
-      <View style={styles.weekSection}>
-        {/* Today pill */}
-        <View style={styles.todayPill}>
-          <TouchableOpacity onPress={() => setDayOffset(prev => prev - 7)}>
-            <Image source={chevronLeft} style={[styles.chevronImg, { transform: [{ rotate: '180deg' }] }]} contentFit="contain" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setDayOffset(0)}>
-            <Text style={styles.todayLabel}>Today</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setDayOffset(prev => prev + 7)}>
-            <Image source={chevronRight} style={styles.chevronImg} contentFit="contain" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Day cards — swipeable day by day */}
-        <GestureDetector gesture={Gesture.Pan()
-          .runOnJS(true)
-          .onBegin(() => { panStartOffset.current = dayOffset; })
-          .onUpdate(e => {
-            // ~48px per day so dragging feels 1:1 with the cards
-            const delta = Math.round(-e.translationX / 48);
-            setDayOffset(panStartOffset.current + delta);
-          })
-        }>
-          <View style={styles.weekRow}>
-            {visibleDates.map((date, i) => {
-              const dollars = predictedTotalsByDate[toDateStr(date)] || 0;
-              return (
-                <View key={i} style={styles.dayCard}>
-                  <Text style={styles.dayLabel}>{DAY_NAMES[date.getDay()]}</Text>
-                  <View style={[styles.dayCircle, { backgroundColor: getHeatmapColor(dollars) }]}>
-                    <Text style={styles.dayNumber}>{date.getDate()}</Text>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </GestureDetector>
-      </View>
-
       {/* ── Farm transparent section — shows farm bg, overlays controls ── */}
       <View style={styles.farmSection}>
         {/* 5-step progress bar — bottom left, over pig sty */}
@@ -407,19 +366,6 @@ export default function HomeScreen() {
             />
           ))}
         </View>
-      {/* ── Hero card ── */}
-      <View style={styles.heroCard}>
-        {/* Content row */}
-        <View style={styles.heroContent}>
-          {/* Savings amount */}
-          <View style={styles.savingsGroup}>
-            <View style={styles.savingsAmountRow}>
-              <Image source={dollarSignLarge} style={styles.dollarLarge} contentFit="contain" />
-              <Text style={styles.savedAmount}>{totalSaved}</Text>
-            </View>
-            <Text style={styles.savedLabel}>saved with Spent</Text>
-          </View>
-
         {/* Check-in + streak — bottom right */}
         <View style={styles.farmOverlayRight}>
           <View style={styles.checkInWrapper}>
@@ -587,7 +533,7 @@ export default function HomeScreen() {
         onClose={() => setCheckInVisible(false)}
       />
     </ScrollView>
-    </View>
+  </View>
   );
 }
 

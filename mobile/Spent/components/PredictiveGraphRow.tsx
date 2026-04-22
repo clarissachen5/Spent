@@ -50,32 +50,41 @@ export default function PredictiveGraphRow({
   showDayLabels,
   dayLabels,
 }: PredictiveGraphRowProps) {
-  const safeMaxE = Math.max(1, maxEvents);
-  const safeMaxS = Math.max(1, maxSpending);
+  const finite = (n: number) => (Number.isFinite(n) ? n : 0);
+  const safeMaxE = Math.max(1, finite(maxEvents));
+  const safeMaxS = Math.max(1, finite(maxSpending));
 
   const topPad    = 6;
   const bottomPad = 4;
-  const amp       = height - topPad - bottomPad;
-  const baseline  = height - bottomPad;
-  const stepX     = width / 7;
+  const safeHeight = Math.max(1, finite(height));
+  const safeWidth  = Math.max(1, finite(width));
+  const amp       = Math.max(1, safeHeight - topPad - bottomPad);
+  const baseline  = safeHeight - bottomPad;
+  const stepX     = safeWidth / 7;
 
   // Only include non-blank cells as data points; skip blanks so curves don't dip into empty days
   const eventPts = events
-    .map((v, i) => ({
-      x: (i + 0.5) * stepX,
-      y: baseline - (v / safeMaxE) * amp,
-      i,
-      blank: blanks?.[i] ?? false,
-    }))
+    .map((raw, i) => {
+      const v = finite(raw);
+      return {
+        x: (i + 0.5) * stepX,
+        y: baseline - (v / safeMaxE) * amp,
+        i,
+        blank: blanks?.[i] ?? false,
+      };
+    })
     .filter(p => !p.blank);
 
   const spendPts = spending
-    .map((v, i) => ({
-      x: (i + 0.5) * stepX,
-      y: baseline - (v / safeMaxS) * amp,
-      i,
-      blank: blanks?.[i] ?? false,
-    }))
+    .map((raw, i) => {
+      const v = finite(raw);
+      return {
+        x: (i + 0.5) * stepX,
+        y: baseline - (v / safeMaxS) * amp,
+        i,
+        blank: blanks?.[i] ?? false,
+      };
+    })
     .filter(p => !p.blank);
 
   const eventLine = smoothPath(eventPts);
@@ -90,7 +99,9 @@ export default function PredictiveGraphRow({
       ? (selectedIndex + 0.5) * stepX
       : null;
   const selectedEventY =
-    selectedIndex != null ? baseline - (events[selectedIndex] / safeMaxE) * amp : null;
+    selectedIndex != null && selectedIndex >= 0 && selectedIndex < 7
+      ? baseline - (finite(events[selectedIndex]) / safeMaxE) * amp
+      : null;
 
   return (
     <View style={{ width }}>

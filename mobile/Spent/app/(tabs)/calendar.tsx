@@ -107,9 +107,11 @@ export default function CalendarScreen() {
   const predictedTotalsByDate: { [date: string]: number } = {};
   const predictedByEventKey: { [key: string]: { amount: number; description: string } } = {};
   predictions.forEach((p: SpendingEstimate) => {
-    predictedTotalsByDate[p.date] = (predictedTotalsByDate[p.date] || 0) + Number(p.medium?.amount ?? 0);
+    const rawAmt = Number(p.medium?.amount ?? 0);
+    const amt    = Number.isFinite(rawAmt) ? rawAmt : 0;
+    predictedTotalsByDate[p.date] = (predictedTotalsByDate[p.date] || 0) + amt;
     predictedByEventKey[`${p.date}|${norm(p.event)}`] = {
-      amount: Number(p.medium?.amount ?? 0),
+      amount: amt,
       description: p.medium?.description ?? '',
     };
   });
@@ -789,5 +791,157 @@ const styles = StyleSheet.create({
   eventDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: '#f0f0f0',
+  },
+
+  // ── New styles for the redesigned (Figma image 5) calendar page ──
+  backBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
+  },
+  backArrow: {
+    fontSize: 22,
+    color: DARK_TEXT,
+    fontWeight: '400',
+    lineHeight: 24,
+  },
+  monthArrowBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: DEEP_GREEN,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthArrowText: {
+    fontSize: 16,
+    color: '#ffffff',
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  weekRowGraph: {
+    position: 'relative',
+    marginBottom: 6,
+  },
+  tooltip: {
+    position: 'absolute',
+    top: -22,
+    width: 64,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e2e2e2',
+    borderRadius: 8,
+    paddingVertical: 3,
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  tooltipActual: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: DEEP_GREEN,
+  },
+  tooltipPredicted: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: GRAY_TEXT,
+  },
+  listSection: {
+    marginTop: 24,
+    gap: 8,
+  },
+  listLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: GRAY_TEXT,
+    letterSpacing: 0.6,
+    marginBottom: 4,
+  },
+  checkInPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 100,
+  },
+  checkInName: {
+    flex: 1,
+    fontSize: 14,
+    color: DARK_TEXT,
+    fontWeight: '500',
+  },
+  checkInAmountNew: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: DARK_TEXT,
+  },
+  editDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: '#c9c9c9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editDotText: {
+    fontSize: 10,
+    color: '#6b6b6b',
+  },
+  eventRowNew: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  eventTimeBlock: {
+    width: 62,
+    borderLeftWidth: 3,
+    paddingLeft: 8,
+  },
+  eventTimeNew: {
+    fontSize: 11,
+    color: DARK_TEXT,
+    fontWeight: '600',
+  },
+  eventTitleNew: {
+    flex: 1,
+    fontSize: 13,
+    color: DARK_TEXT,
+    fontWeight: '500',
+  },
+  eventSpendPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#c9c9c9',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 100,
+  },
+  eventSpendText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: DARK_TEXT,
+  },
+  eventSpendSparkle: {
+    fontSize: 10,
+    color: '#f0b400',
   },
 });
