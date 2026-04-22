@@ -21,11 +21,18 @@ import * as TaskManager from 'expo-task-manager';
 // ── Figma assets (local SVGs with CSS vars resolved) ─────────────────────────
 const chevronLeft        = require('../../assets/icons/chevronLeft.svg');
 const chevronRight       = require('../../assets/icons/chevronRight.svg');
-const dollarSignLarge    = require('../../assets/icons/dollarSignLarge.svg');
 const clipboardIcon      = require('../../assets/icons/clipboardIcon.svg');
 const flameIcon          = require('../../assets/icons/flameIcon.svg');
-const heroLandscape      = require('../../assets/icons/heroLandscape.svg');
 const bagIcon            = require('../../assets/icons/bagIcon.svg');
+
+// ── Farm background images (1 = worst, 5 = best) ─────────────────────────────
+const FARM_IMAGES = [
+  require('../../assets/images/1.jpg'),
+  require('../../assets/images/2.jpg'),
+  require('../../assets/images/3.jpg'),
+  require('../../assets/images/4.jpg'),
+  require('../../assets/images/5.jpg'),
+];
 const seeMoreArrow       = require('../../assets/icons/seeMoreArrow.svg');
 const foodIcon           = require('../../assets/icons/foodIcon.svg');
 const budgetMarkerLine   = require('../../assets/icons/budgetMarkerLine.svg');
@@ -110,6 +117,22 @@ export default function HomeScreen() {
     return totals;
   }, [checkInResults]);
 
+  // Pick farm background based on actual spend vs monthly budget
+  const farmImage = useMemo(() => {
+    const totalSpent  = Object.values(categoryTotals).reduce((s, v) => s + v, 0);
+    const totalBudget = Object.values(monthlyBudget).reduce((s, v) => s + v, 0);
+
+    // No data yet — show the middle image
+    if (totalBudget === 0 || totalSpent === 0) return FARM_IMAGES[2];
+
+    const ratio = totalSpent / totalBudget;
+    if (ratio > 1.2) return FARM_IMAGES[0]; // really over → image 1
+    if (ratio > 1.0) return FARM_IMAGES[1]; // somewhat over → image 2
+    if (ratio > 0.8) return FARM_IMAGES[2]; // at threshold → image 3
+    if (ratio > 0.5) return FARM_IMAGES[3]; // somewhat under → image 4
+    return FARM_IMAGES[4];                  // significantly under → image 5
+  }, [categoryTotals, monthlyBudget]);
+
   // Sum medium predicted spend per day
   const predictedTotalsByDate = useMemo(() => {
     const totals: { [date: string]: number } = {};
@@ -119,7 +142,6 @@ export default function HomeScreen() {
     return totals;
   }, [predictions]);
 
-  const totalSaved = 362;
   const streak = 3;
   const [dayOffset, setDayOffset] = useState(0);
   const [checkInVisible, setCheckInVisible] = useState(false);
@@ -333,17 +355,11 @@ export default function HomeScreen() {
 
       {/* ── Hero card ── */}
       <View style={styles.heroCard}>
+        {/* Farm fills the entire card */}
+        <Image source={farmImage} style={StyleSheet.absoluteFillObject} contentFit="cover" />
+
         {/* Content row */}
         <View style={styles.heroContent}>
-          {/* Savings amount */}
-          <View style={styles.savingsGroup}>
-            <View style={styles.savingsAmountRow}>
-              <Image source={dollarSignLarge} style={styles.dollarLarge} contentFit="contain" />
-              <Text style={styles.savedAmount}>{totalSaved}</Text>
-            </View>
-            <Text style={styles.savedLabel}>saved with Spent</Text>
-          </View>
-
           {/* Check-in button + streak badge */}
           <View style={styles.checkInWrapper}>
             <TouchableOpacity
@@ -360,13 +376,6 @@ export default function HomeScreen() {
             </View>
           </View>
         </View>
-
-        {/* Landscape illustration */}
-        <Image
-          source={heroLandscape}
-          style={styles.landscapeImg}
-          contentFit="cover"
-        />
       </View>
 
       {/* ── Location status ── */}
@@ -558,6 +567,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     backgroundColor: MINT,
+    height: 220,
   },
   heroContent: {
     flexDirection: 'row',
@@ -566,27 +576,7 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     paddingHorizontal: 20,
     paddingBottom: 20,
-  },
-  savingsGroup: {
-    gap: 2,
-  },
-  savingsAmountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  dollarLarge: {
-    width: 24,
-    height: 24,
-  },
-  savedAmount: {
-    fontSize: 32,
-    color: DARK_GREEN,
-    fontWeight: '400',
-  },
-  savedLabel: {
-    fontSize: 10,
-    color: DARK_GREEN,
+    flex: 1,
   },
   checkInWrapper: {
     alignItems: 'center',
@@ -632,10 +622,6 @@ const styles = StyleSheet.create({
   streakCount: {
     fontSize: 10,
     color: LIME_GREEN,
-  },
-  landscapeImg: {
-    width: '100%',
-    height: 112,
   },
 
   // ── Location status ─────────────────────────────────────────────────────────
