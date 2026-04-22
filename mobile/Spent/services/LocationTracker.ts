@@ -5,7 +5,7 @@ import axios from 'axios';
 import { getFirestore, collection, addDoc } from 'firebase/firestore';
 import { app } from '../src/config/firebase';
 import { GOOGLE_MAPS_KEY } from '../constants/config';
-import { USER_ID_KEY } from '../context/AuthContext';
+import { USER_ID_KEY } from '../constants/config';
 
 const LOCATION_TASK_NAME = 'spent-background-location';
 const DWELL_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
@@ -127,17 +127,22 @@ export async function startLocationTracking(): Promise<boolean> {
   const already = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK_NAME);
   if (already) return true;
 
-  await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-    accuracy: Location.Accuracy.Balanced,
-    distanceInterval: 20,            // update every 20 metres moved
-    deferredUpdatesInterval: 60_000, // or every 60 seconds
-    showsBackgroundLocationIndicator: true,
-    foregroundService: {
-      notificationTitle: 'Spent',
-      notificationBody: 'Tracking location to detect places you visit',
-      notificationColor: '#4F090B',
-    },
-  });
+  try {
+    await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+      accuracy: Location.Accuracy.Balanced,
+      distanceInterval: 20,
+      deferredUpdatesInterval: 60_000,
+      showsBackgroundLocationIndicator: true,
+      foregroundService: {
+        notificationTitle: 'Spent',
+        notificationBody: 'Tracking location to detect places you visit',
+        notificationColor: '#4F090B',
+      },
+    });
+  } catch (e) {
+    console.warn('[LocationTracker] startLocationUpdatesAsync failed (rebuild dev client to enable background location):', e);
+    return false;
+  }
 
   return true;
 }
