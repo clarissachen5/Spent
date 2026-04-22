@@ -14,6 +14,7 @@ import { useAuth, SpendingEstimate } from '../../context/AuthContext';
 import { API_BASE_URL } from '../../constants/config';
 import { getFirestore, setDoc, doc } from 'firebase/firestore';
 import { app } from '../../src/config/firebase';
+import PredictiveGraphRow from '../../components/PredictiveGraphRow';
 
 // ── Assets ────────────────────────────────────────────────────────────────────
 const chevronLeft  = require('../../assets/icons/chevronLeft.svg');
@@ -33,7 +34,19 @@ const MONTH_NAMES = [
 const LIME_GREEN = '#cdf545';
 const DARK_TEXT  = '#1e1d19';
 const DARK_GREEN = '#5a8a2a';
+const DEEP_GREEN = '#0a542f';
 const MINT       = '#d2f3e2';
+const GRAY_TEXT  = '#a5a5a5';
+
+// Pastel bg per category for check-in pills (image 5)
+const CATEGORY_PILL_BG: Record<string, string> = {
+  Food:           '#e4f3ff',
+  Shopping:       '#fff1d6',
+  Coffee:         '#fde4ec',
+  Entertainment:  '#ece0f8',
+  Transportation: '#ffe7d4',
+  Other:          '#fde0e0',
+};
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface CalendarEvent {
@@ -85,6 +98,7 @@ export default function CalendarScreen() {
   const [eventsByDate, setEventsByDate]     = useState<{ [dateStr: string]: CalendarEvent[] }>({});
   const [fetchedMonths, setFetchedMonths]   = useState<Set<string>>(new Set());
   const [selectedDate, setSelectedDate]     = useState<string | null>(null);
+  const [graphRowWidth, setGraphRowWidth]   = useState(0);
 
   // Normalize event titles so minor differences (case, whitespace) don't break matching
   const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -377,247 +391,204 @@ export default function CalendarScreen() {
     ? new Date(selectedDate + 'T12:00:00')
     : null;
 
+  // ── Normalization caps across the whole month ────────────────────────────
+  let monthMaxEvents   = 1;
+  let monthMaxSpending = 1;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = toDateStr(year, month, d);
+    monthMaxEvents   = Math.max(monthMaxEvents,   (eventsByDate[ds]?.length ?? 0));
+    monthMaxSpending = Math.max(monthMaxSpending, predictedTotalsByDate[ds] ?? 0);
+  }
+
+  // Helper to figure out which column (0–6) the currently-selected date is in,
+  // for a given row
+  const selectedDayNum = selectedDate
+    ? Number(selectedDate.split('-')[2])
+    : null;
+  const selectedMonthMatches = selectedDate
+    ? selectedDate.startsWith(`${year}-${String(month + 1).padStart(2, '0')}`)
+    : false;
+
   return (
-    <View style={[styles.container, { paddingTop: top + 20 }]}>
+    <ScrollView
+      style={[styles.container, { paddingTop: top + 16 }]}
+      contentContainerStyle={{ paddingBottom: 120 }}
+      showsVerticalScrollIndicator={false}
+    >
 
       {/* ── Page header ── */}
       <View style={styles.pageHeader}>
+        <TouchableOpacity hitSlop={12} style={styles.backBtn}>
+          <Text style={styles.backArrow}>‹</Text>
+        </TouchableOpacity>
         <Image source={calendarIcon} style={styles.pageIcon} contentFit="contain" />
-        <Text style={styles.pageTitle}>Calendar</Text>
+        <Text style={styles.pageTitle}>Predictive Calendar</Text>
       </View>
 
       <GestureDetector gesture={swipeGesture}>
         <View style={styles.calendarCard}>
 
-          {/* Month navigation */}
+          {/* Month navigation — circular green arrows */}
           <View style={styles.monthNav}>
-            <TouchableOpacity onPress={() => setMonthOffset(prev => prev - 1)} hitSlop={12}>
-              <Image
-                source={chevronLeft}
-                style={[styles.chevron, { transform: [{ rotate: '180deg' }] }]}
-                contentFit="contain"
-              />
+            <TouchableOpacity
+              onPress={() => setMonthOffset(prev => prev - 1)}
+              style={styles.monthArrowBtn}
+              hitSlop={10}
+            >
+              <Text style={styles.monthArrowText}>‹</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setMonthOffset(0)}>
-              <Text style={styles.monthLabel}>{MONTH_NAMES[month]} {year}</Text>
+              <Text style={styles.monthLabel}>{MONTH_NAMES[month]}</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setMonthOffset(prev => prev + 1)} hitSlop={12}>
-              <Image source={chevronRight} style={styles.chevron} contentFit="contain" />
+            <TouchableOpacity
+              onPress={() => setMonthOffset(prev => prev + 1)}
+              style={styles.monthArrowBtn}
+              hitSlop={10}
+            >
+              <Text style={styles.monthArrowText}>›</Text>
             </TouchableOpacity>
           </View>
 
           {/* Day-of-week header */}
-          <View style={styles.dayHeaderRow}>
+          <View
+            style={styles.dayHeaderRow}
+            onLayout={e => setGraphRowWidth(e.nativeEvent.layout.width)}
+          >
             {DAY_NAMES.map(d => (
               <Text key={d} style={styles.dayHeader}>{d}</Text>
             ))}
           </View>
 
-          {/* Day grid */}
-          {rows.map((row, ri) => (
-            <View key={ri} style={styles.weekRow}>
-              {row.map((day, di) => {
-                if (!day) return <View key={di} style={styles.dayCell} />;
+          {/* Weekly graph rows */}
+          {graphRowWidth > 0 && rows.map((row, ri) => {
+            const eventsArr   = row.map(d => d ? (eventsByDate[toDateStr(year, month, d)]?.length ?? 0) : 0);
+            const spendingArr = row.map(d => d ? (predictedTotalsByDate[toDateStr(year, month, d)] ?? 0) : 0);
+            const blanks      = row.map(d => d == null);
 
-                const dateStr = toDateStr(year, month, day);
-                const dollars = predictedTotalsByDate[dateStr] || 0;
-                const isToday =
-                  day === today.getDate() &&
-                  month === today.getMonth() &&
-                  year === today.getFullYear();
-                const isSelected = selectedDate === dateStr;
+            // Is the selected day in this row?
+            let selIndex: number | undefined = undefined;
+            if (selectedMonthMatches && selectedDayNum != null) {
+              const idx = row.findIndex(d => d === selectedDayNum);
+              if (idx >= 0) selIndex = idx;
+            }
 
-                let circleBg     = getHeatmapColor(dollars);
-                let circleBorder: string | undefined;
-                let circleSize   = CELL_SIZE - 4;
-                if (!dollars)   { circleBorder = LIME_GREEN; }
-                if (isToday)    { circleBg = 'transparent'; circleBorder = LIME_GREEN; /* size set below */ }
-                if (isSelected) { circleBg = 'rgba(205,245,69,0.18)'; circleBorder = LIME_GREEN; }
+            const tooltipSpend = selIndex != null && selectedDate
+              ? (predictedTotalsByDate[selectedDate] ?? 0)
+              : 0;
+            const tooltipCheck = selIndex != null && selectedDate
+              ? checkInResults
+                  .filter(r => {
+                    if (!r.visited) return false;
+                    const d = r.timestamp instanceof Date ? r.timestamp : new Date(r.timestamp);
+                    const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    return ds === selectedDate;
+                  })
+                  .reduce((s, r) => s + (r.amount ?? 0), 0)
+              : 0;
 
-                // Sun geometry — smaller circle so rays have room to breathe
-                const TODAY_R   = Math.round((CELL_SIZE - 4) * 0.52);
-                const RAY_LEN   = 7;
-                const RAY_GAP   = 4;
-                const rayRadius = TODAY_R / 2 + RAY_GAP + RAY_LEN / 2;
-                const cx = CELL_SIZE / 2;
-                const cy = CELL_SIZE / 2;
-
-                return (
-                  <TouchableOpacity
-                    key={di}
-                    style={styles.dayCell}
-                    onPress={() => setSelectedDate(isSelected ? null : dateStr)}
-                    activeOpacity={0.7}
+            return (
+              <View key={ri} style={styles.weekRowGraph}>
+                {selIndex != null && (tooltipSpend > 0 || tooltipCheck > 0) && (
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.tooltip,
+                      { left: (selIndex + 0.5) * (graphRowWidth / 7) - 32 },
+                    ]}
                   >
-                    {/* Sun rays — only for today */}
-                    {isToday && Array.from({ length: 8 }, (_, i) => {
-                      const rad = (i * 45 * Math.PI) / 180;
-                      const mx  = cx + rayRadius * Math.cos(rad);
-                      const my  = cy + rayRadius * Math.sin(rad);
-                      return (
-                        <View
-                          key={i}
-                          style={{
-                            position: 'absolute',
-                            width: RAY_LEN,
-                            height: 2.5,
-                            borderRadius: 1.5,
-                            backgroundColor: LIME_GREEN,
-                            left: mx - RAY_LEN / 2,
-                            top:  my - 1.25,
-                            transform: [{ rotate: `${i * 45}deg` }],
-                          }}
-                        />
-                      );
-                    })}
-                    {/* Heatmap circle — uniform size (smaller for today) */}
-                    <View
-                      style={[
-                        styles.dayCircle,
-                        {
-                          backgroundColor: circleBg,
-                          borderWidth:  circleBorder ? 1.5 : 0,
-                          borderColor:  circleBorder ?? 'transparent',
-                          width:        isToday ? TODAY_R : circleSize,
-                          height:       isToday ? TODAY_R : circleSize,
-                          borderRadius: isToday ? TODAY_R / 2 : circleSize / 2,
-                        },
-                      ]}
-                    />
-                    {/* Day number always visible, centered over the circle */}
-                    <Text style={[
-                      styles.dayNumber,
-                      isSelected && styles.selectedNumber,
-                    ]}>
-                      {day}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ))}
-
-          {/* Legend */}
-          <View style={styles.legend}>
-            <Text style={styles.legendLabel}>Less</Text>
-            {[0, 1, 2, 3, 4, 5].map(v => (
-              <View
-                key={v}
-                style={[
-                  styles.legendDot,
-                  {
-                    backgroundColor: getHeatmapColor(v),
-                    borderWidth: v === 0 ? 1.5 : 0,
-                    borderColor: v === 0 ? LIME_GREEN : 'transparent',
-                  },
-                ]}
-              />
-            ))}
-            <Text style={styles.legendLabel}>More</Text>
-          </View>
+                    <Text style={styles.tooltipActual}>${tooltipCheck.toFixed(0)}</Text>
+                    {tooltipSpend > 0 && (
+                      <Text style={styles.tooltipPredicted}> ${tooltipSpend.toFixed(0)}</Text>
+                    )}
+                  </View>
+                )}
+                <PredictiveGraphRow
+                  width={graphRowWidth}
+                  height={56}
+                  events={eventsArr}
+                  spending={spendingArr}
+                  maxEvents={monthMaxEvents}
+                  maxSpending={monthMaxSpending}
+                  blanks={blanks}
+                  dayNumbers={row}
+                  selectedIndex={selIndex}
+                  onDayPress={i => {
+                    const day = row[i];
+                    if (day == null) return;
+                    const ds = toDateStr(year, month, day);
+                    setSelectedDate(ds === selectedDate ? null : ds);
+                  }}
+                />
+              </View>
+            );
+          })}
 
         </View>
       </GestureDetector>
 
-      {/* ── Day events panel ── */}
-      {selectedDate && (
-        <View style={styles.eventsPanel}>
-          <View style={styles.eventsPanelHeader}>
-            <View>
-              <Text style={styles.eventsPanelTitle}>
-                {selectedDay
-                  ? `${DAY_NAMES[selectedDay.getDay()]}, ${MONTH_NAMES[selectedDay.getMonth()]} ${selectedDay.getDate()}`
-                  : ''}
-              </Text>
-              {selectedDate && predictedTotalsByDate[selectedDate] > 0 && (
-                <Text style={styles.dayTotalText}>
-                  Est. total: ${predictedTotalsByDate[selectedDate].toFixed(2)}
-                </Text>
-              )}
-            </View>
-            <TouchableOpacity onPress={() => setSelectedDate(null)} hitSlop={12}>
-              <Text style={styles.closeBtn}>✕</Text>
-            </TouchableOpacity>
-          </View>
-
-          {selectedCheckIns.length === 0 && selectedEvents.length === 0 ? (
-            <Text style={styles.noEventsText}>No events</Text>
-          ) : (
-            <ScrollView showsVerticalScrollIndicator={false}>
-
-              {/* ── Check-ins ── */}
-              {selectedCheckIns.length > 0 && (
-                <>
-                  <Text style={styles.sectionLabel}>Check-ins</Text>
-                  {selectedCheckIns.map((r, i) => (
-                    <View key={`checkin-${i}`}>
-                      <View style={styles.eventRow}>
-                        <View style={styles.eventTimePart}>
-                          <Text style={styles.checkInAmount}>
-                            ${r.amount ?? 0}
-                          </Text>
-                        </View>
-                        <View style={[styles.eventDot, styles.checkInDot]} />
-                        <Text style={styles.eventTitle} numberOfLines={1}>{r.location}</Text>
-                      </View>
-                      {i < selectedCheckIns.length - 1 && <View style={styles.eventDivider} />}
-                    </View>
-                  ))}
-                </>
-              )}
-
-              {/* ── Calendar events ── */}
-              {selectedEvents.length > 0 && (
-                <>
-                  <Text style={[styles.sectionLabel, selectedCheckIns.length > 0 && { marginTop: 14 }]}>
-                    Events
-                  </Text>
-                  {selectedEvents.map((item, i) => {
-                    const pred = selectedDate
-                      ? predictedByEventKey[`${selectedDate}|${norm(item.title)}`]
-                      : undefined;
-                    return (
-                      <View key={item.id}>
-                        <View style={styles.eventRow}>
-                          <View style={styles.eventTimePart}>
-                            {item.isAllDay ? (
-                              <Text style={styles.allDayBadge}>All day</Text>
-                            ) : (
-                              <>
-                                <Text style={styles.eventTime}>
-                                  {item.startTime ? formatTime(item.startTime) : '—'}
-                                </Text>
-                                {item.endTime && (
-                                  <Text style={styles.eventTimeEnd}>
-                                    {formatTime(item.endTime)}
-                                  </Text>
-                                )}
-                              </>
-                            )}
-                          </View>
-                          <View style={styles.eventDot} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.eventTitle} numberOfLines={2}>{item.title}</Text>
-                            {pred && pred.amount > 0 && (
-                              <Text style={styles.eventEstimate}>
-                                ${pred.amount.toFixed(2)} · {pred.description}
-                              </Text>
-                            )}
-                          </View>
-                        </View>
-                        {i < selectedEvents.length - 1 && <View style={styles.eventDivider} />}
-                      </View>
-                    );
-                  })}
-                </>
-              )}
-
-            </ScrollView>
-          )}
+      {/* ── Check-ins for selected day ── */}
+      {selectedDate && selectedCheckIns.length > 0 && (
+        <View style={styles.listSection}>
+          <Text style={styles.listLabel}>CHECK IN</Text>
+          {selectedCheckIns.map((r, i) => {
+            const bg = CATEGORY_PILL_BG[r.category] ?? CATEGORY_PILL_BG.Other;
+            return (
+              <View key={`checkin-${i}`} style={[styles.checkInPill, { backgroundColor: bg }]}>
+                <Text style={styles.checkInName} numberOfLines={1}>{r.location}</Text>
+                <Text style={styles.checkInAmountNew}>${r.amount ?? 0}</Text>
+                <View style={styles.editDot}>
+                  <Text style={styles.editDotText}>✎</Text>
+                </View>
+              </View>
+            );
+          })}
         </View>
       )}
 
-    </View>
+      {/* ── Upcoming events ── */}
+      {selectedDate && selectedEvents.length > 0 && (
+        <View style={styles.listSection}>
+          <Text style={styles.listLabel}>UPCOMING EVENTS</Text>
+          {selectedEvents.map((item, i) => {
+            const pred = predictedByEventKey[`${selectedDate}|${norm(item.title)}`];
+            const accentColors = ['#c9d8a0', '#b7d4ff', '#d8c4ef', '#ffd6a0'];
+            const accent = accentColors[i % accentColors.length];
+            return (
+              <View key={item.id} style={styles.eventRowNew}>
+                <View style={[styles.eventTimeBlock, { borderLeftColor: accent }]}>
+                  {item.isAllDay ? (
+                    <Text style={styles.eventTimeNew}>All day</Text>
+                  ) : (
+                    <>
+                      <Text style={styles.eventTimeNew}>
+                        {item.startTime ? formatTime(item.startTime).toLowerCase().replace(/\s/g, '') : '—'}
+                      </Text>
+                      {item.endTime && (
+                        <Text style={styles.eventTimeNew}>
+                          {formatTime(item.endTime).toLowerCase().replace(/\s/g, '')}
+                        </Text>
+                      )}
+                    </>
+                  )}
+                </View>
+                <Text style={styles.eventTitleNew} numberOfLines={2}>{item.title}</Text>
+                {pred && pred.amount > 0 && (
+                  <View style={styles.eventSpendPill}>
+                    <Text style={styles.eventSpendText}>${pred.amount.toFixed(2)}</Text>
+                    <Text style={styles.eventSpendSparkle}>✦</Text>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {selectedDate && selectedCheckIns.length === 0 && selectedEvents.length === 0 && (
+        <Text style={styles.noEventsText}>No events on this day</Text>
+      )}
+
+    </ScrollView>
   );
 }
 

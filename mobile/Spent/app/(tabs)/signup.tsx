@@ -30,16 +30,11 @@ export default function SignUp() {
   });
 
   useEffect(() => {
-    console.log("request.url:", request?.url);
-    console.log("response:", response);
     if (response?.type === "success") {
       const accessToken = response.authentication?.accessToken;
-      console.log("Google access token:", accessToken); // <-- Print the token
       if (accessToken) {
         setToken(accessToken);
         router.replace('/(tabs)/onboarding');
-      } else {
-        console.warn("Authentication object is missing accessToken.");
       }
     }
   }, [response]);
