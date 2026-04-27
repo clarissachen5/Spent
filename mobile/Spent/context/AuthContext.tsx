@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { getFirestore, collection, getDocs, setDoc, doc, addDoc, deleteDoc, query, where, updateDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { app } from '../src/config/firebase';
@@ -119,7 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // When a token arrives, resolve the Google user ID then fetch user data
-  const setToken = (accessToken: string) => {
+  const setToken = useCallback((accessToken: string) => {
     setTokenState(accessToken);
     // Fetch Google userinfo to get a stable user ID (the `sub` field)
     fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
@@ -135,34 +135,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .catch(e => console.warn('[AuthContext] userinfo fetch failed:', e));
-  };
+  }, []);
 
-  const mergePredictions = (incoming: SpendingEstimate[]) => {
+  const mergePredictions = useCallback((incoming: SpendingEstimate[]) => {
     setPredictions(prev => {
       const map = new Map(prev.map(p => [`${p.date}|${p.event}`, p]));
       incoming.forEach(p => map.set(`${p.date}|${p.event}`, p));
       return Array.from(map.values());
     });
-  };
-
-  // Fetch pending locations for this user
-  async function fetchPendingLocations(uid: string) {
-    try {
-      const q = query(userCol(uid, 'detected_locations'), where('flashcard_shown', '==', false));
-      const snapshot = await getDocs(q);
-      const locations: DetectedLocation[] = snapshot.docs.map(d => ({
-        id: d.id,
-        ...(d.data() as Omit<DetectedLocation, 'id'>),
-      }));
-      setPendingLocations(locations);
-    } catch (e) {
-      // Firestore unavailable — CheckInModal falls back to hardcoded locations
-    }
-  }
+  }, []);
 
   // Load all user data once userId is resolved
   useEffect(() => {
     if (!userId || !token) return;
+
+    // Defined inside the effect so it's not a dep that changes each render
+    const fetchPendingLocations = async (uid: string) => {
+      try {
+        const q = query(userCol(uid, 'detected_locations'), where('flashcard_shown', '==', false));
+        const snapshot = await getDocs(q);
+        const locations: DetectedLocation[] = snapshot.docs.map(d => ({
+          id: d.id,
+          ...(d.data() as Omit<DetectedLocation, 'id'>),
+        }));
+        setPendingLocations(locations);
+      } catch (e) {
+        // Firestore unavailable — CheckInModal falls back to hardcoded locations
+      }
+    };
 
     fetchPendingLocations(userId);
 
@@ -337,7 +337,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     syncOnLogin();
   }, [userId, token]);
 
-  const addCheckInResult = (result: CheckInResult) => {
+  const addCheckInResult = useCallback((result: CheckInResult) => {
     setCheckInResults(prev => [...prev, result]);
     (async () => {
       const uid = userId ?? await AsyncStorage.getItem(USER_ID_KEY);
@@ -354,11 +354,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('[Firestore] check-in save failed:', e);
       }
     })();
-  };
+  }, [userId]);
 
-  const saveUserProfile = async (profile: UserProfile) => {
+  const saveUserProfile = useCallback(async (profile: UserProfile) => {
     setUserProfileState(profile);
-    // userId may still be resolving — read from AsyncStorage as fallback
     const uid = userId ?? await AsyncStorage.getItem(USER_ID_KEY);
     if (!uid) {
       console.warn('[AuthContext] saveUserProfile called before userId resolved');
@@ -368,9 +367,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ...profile,
       updated_at: new Date().toISOString(),
     });
-  };
+  }, [userId]);
 
-  const saveMonthlyBudget = async (budget: Record<string, number>) => {
+  const saveMonthlyBudget = useCallback(async (budget: Record<string, number>) => {
     setMonthlyBudget(budget);
     const uid = userId ?? await AsyncStorage.getItem(USER_ID_KEY);
     if (!uid) return;
@@ -380,9 +379,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ...budget,
       updated_at: new Date().toISOString(),
     });
-  };
+  }, [userId]);
 
-  const markLocationShown = async (id: string) => {
+  const markLocationShown = useCallback(async (id: string) => {
     if (userId) {
       try {
         await updateDoc(userDoc(userId, 'detected_locations', id), { flashcard_shown: true });
@@ -391,9 +390,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     setPendingLocations(prev => prev.filter(l => l.id !== id));
-  };
+  }, [userId]);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setTokenState(null);
     setUserId(null);
     AsyncStorage.removeItem(USER_ID_KEY).catch(() => {});
@@ -404,17 +403,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfileLoaded(false);
     setPendingLocations([]);
     setMonthlyBudget({});
-  };
+  }, []);
+
+  const contextValue = useMemo(() => ({
+    token, userId, setToken, logout,
+    checkInResults, addCheckInResult,
+    predictions, mergePredictions, predictionsLoaded,
+    userProfile, profileLoaded, saveUserProfile,
+    pendingLocations, markLocationShown,
+    monthlyBudget, saveMonthlyBudget,
+  }), [
+    token, userId, setToken, logout,
+    checkInResults, addCheckInResult,
+    predictions, mergePredictions, predictionsLoaded,
+    userProfile, profileLoaded, saveUserProfile,
+    pendingLocations, markLocationShown,
+    monthlyBudget, saveMonthlyBudget,
+  ]);
 
   return (
-    <AuthContext.Provider value={{
-      token, userId, setToken, logout,
-      checkInResults, addCheckInResult,
-      predictions, mergePredictions, predictionsLoaded,
-      userProfile, profileLoaded, saveUserProfile,
-      pendingLocations, markLocationShown,
-      monthlyBudget, saveMonthlyBudget,
-    }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

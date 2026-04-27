@@ -11,9 +11,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useAuth, SpendingEstimate } from '../../context/AuthContext';
-import { API_BASE_URL } from '../../constants/config';
-import { getFirestore, setDoc, doc } from 'firebase/firestore';
-import { app } from '../../src/config/firebase';
 import PredictiveGraphRow from '../../components/PredictiveGraphRow';
 
 // ── Assets ────────────────────────────────────────────────────────────────────
@@ -90,18 +87,20 @@ function sortEvents(events: CalendarEvent[]): CalendarEvent[] {
   });
 }
 
+// Normalize event titles so minor differences (case, whitespace) don't break matching
+function norm(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 export default function CalendarScreen() {
   const { top }   = useSafeAreaInsets();
-  const { token, userId, checkInResults, predictions, mergePredictions, predictionsLoaded } = useAuth();
+  const { token, userId, checkInResults, predictions, predictionsLoaded } = useAuth();
 
   const [monthOffset, setMonthOffset]       = useState(0);
   const [eventsByDate, setEventsByDate]     = useState<{ [dateStr: string]: CalendarEvent[] }>({});
   const [fetchedMonths, setFetchedMonths]   = useState<Set<string>>(new Set());
   const [selectedDate, setSelectedDate]     = useState<string | null>(null);
   const [graphRowWidth, setGraphRowWidth]   = useState(0);
-
-  // Normalize event titles so minor differences (case, whitespace) don't break matching
-  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
   // Build lookup maps from Ollama predictions
   const predictedTotalsByDate: { [date: string]: number } = {};
@@ -118,122 +117,6 @@ export default function CalendarScreen() {
   const displayDate = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
   const year        = displayDate.getFullYear();
   const month       = displayDate.getMonth();
-
-  // ── One-time Ollama sync across ±6 months from today ────────────────────
-  useEffect(() => {
-    if (!token || !userId || !predictionsLoaded) return;
-
-    const syncOllama = async () => {
-      const now   = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth() - 6, 1);
-      const end   = new Date(now.getFullYear(), now.getMonth() + 7, 0, 23, 59, 59);
-
-      let allItems: any[] = [];
-      try {
-        const res = await fetch(
-          `https://www.googleapis.com/calendar/v3/calendars/primary/events` +
-          `?timeMin=${start.toISOString()}&timeMax=${end.toISOString()}` +
-          `&singleEvents=true&orderBy=startTime&maxResults=2500`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-        const data = await res.json();
-        if (!res.ok) { console.warn('[Calendar OllamaSync] Google error:', data); return; }
-        allItems = data.items || [];
-      } catch (e) {
-        console.warn('[Calendar OllamaSync] fetch failed:', e);
-        return;
-      }
-
-      const coveredKeys = new Set(predictions.map((p: SpendingEstimate) => `${p.date}|${norm(p.event)}`));
-      const allEvents   = allItems.flatMap((event: any) => {
-        const dateStr = event.start?.date ?? event.start?.dateTime?.split('T')[0] ?? '';
-        const title   = event.summary ?? '(No title)';
-        return dateStr ? [{ date: dateStr, title }] : [];
-      });
-
-      const uncovered = allEvents.filter(e => !coveredKeys.has(`${e.date}|${norm(e.title)}`));
-
-      // Anchor sort to the last date that already has a prediction (fall back to today)
-      const anchorDate = predictions.length > 0
-        ? predictions.reduce((best, p) => (p.date > best ? p.date : best), predictions[0].date)
-        : now.toISOString().split('T')[0];
-      const anchorMs = new Date(anchorDate + 'T12:00:00').getTime();
-      uncovered.sort((a, b) => {
-        const distA = Math.abs(new Date(a.date + 'T12:00:00').getTime() - anchorMs);
-        const distB = Math.abs(new Date(b.date + 'T12:00:00').getTime() - anchorMs);
-        return distA - distB;
-      });
-      console.log('[Calendar OllamaSync] uncovered:', uncovered.length, 'events; anchor date:', anchorDate);
-      if (uncovered.length === 0) return;
-
-      const db = getFirestore(app);
-      const BATCH = 20;
-
-      // Process each batch independently — save + update UI immediately when each resolves
-      const processBatch = async (batch: { date: string; title: string }[]) => {
-        try {
-          const ollamaRes = await fetch(`${API_BASE_URL}/ollama/analyze`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ events: batch }),
-          });
-          if (!ollamaRes.ok) { console.warn('[OllamaSync] non-ok response', ollamaRes.status); return; }
-          const analysis = await ollamaRes.json();
-          console.log('[OllamaSync] raw analysis keys:', Object.keys(analysis));
-
-          let estimates: SpendingEstimate[] = [];
-          try {
-            if (analysis.parsed_estimates) {
-              const parsed = typeof analysis.parsed_estimates === 'string'
-                ? JSON.parse(analysis.parsed_estimates)
-                : analysis.parsed_estimates;
-              estimates = parsed.estimates ?? (Array.isArray(parsed) ? parsed : []);
-            } else if (analysis.raw_response) {
-              const match = analysis.raw_response.match(/\{[\s\S]*\}/);
-              if (match) {
-                const parsed = JSON.parse(match[0]);
-                estimates = parsed.estimates ?? (Array.isArray(parsed) ? parsed : []);
-              }
-            }
-          } catch (parseErr) {
-            console.warn('[OllamaSync] parse error:', parseErr, 'raw:', JSON.stringify(analysis).slice(0, 300));
-          }
-
-          console.log('[OllamaSync] parsed', estimates.length, 'estimates from batch of', batch.length);
-          if (estimates.length === 0) return;
-
-          // Update calendar UI immediately
-          mergePredictions(estimates);
-          console.log('[OllamaSync] mergePredictions called with', estimates.length, 'estimates');
-
-          // Save to Firestore — await so errors are visible
-          const savedAt = new Date().toISOString();
-          try {
-            await Promise.all(estimates.map((p: SpendingEstimate) =>
-              setDoc(doc(db, 'users', userId!, 'spending_analyses', `${p.date}__${p.event.replace(/\//g, '-')}`.slice(0, 500)), {
-                date: p.date, event: p.event,
-                low: p.low, medium: p.medium, high: p.high,
-                created_at: savedAt,
-              })
-            ));
-            console.log('[OllamaSync] Firestore saved', estimates.length, 'predictions');
-          } catch (fsErr) {
-            console.warn('[OllamaSync] Firestore save failed:', fsErr);
-          }
-        } catch (e) {
-          console.warn('[OllamaSync] batch failed (backend may be offline):', (e as any)?.message);
-        }
-      };
-
-      // Fire all batches sequentially so Ollama isn't overwhelmed,
-      // but each saves + updates the calendar the moment it completes
-      for (let i = 0; i < uncovered.length; i += BATCH) {
-        await processBatch(uncovered.slice(i, i + BATCH));
-      }
-    };
-
-    syncOllama();
-  }, [token, predictionsLoaded]);  // runs once when ready
 
   // ── Fetch events for the displayed month ──────────────────────────────────
   useEffect(() => {
@@ -288,65 +171,7 @@ export default function CalendarScreen() {
 
       setEventsByDate(prev => ({ ...prev, ...byDate }));
       setFetchedMonths(prev => new Set([...prev, key]));
-      console.log('[Calendar] loaded', items.length, 'events,', predictions.length, 'predictions in state');
-
-      // 3. Find events not yet covered by spending_analyses (normalize titles)
-      const coveredKeys = new Set(predictions.map((p: SpendingEstimate) => `${p.date}|${norm(p.event)}`));
-      const allEvents   = Object.entries(byDate).flatMap(([date, evs]) =>
-        evs.map(ev => ({ date, title: ev.title }))
-      );
-      const uncovered = allEvents.filter(e => !coveredKeys.has(`${e.date}|${norm(e.title)}`));
-      const todayMs = new Date().getTime();
-      uncovered.sort((a, b) => {
-        const distA = Math.abs(new Date(a.date + 'T12:00:00').getTime() - todayMs);
-        const distB = Math.abs(new Date(b.date + 'T12:00:00').getTime() - todayMs);
-        return distA - distB;
-      });
-      console.log('[Calendar] covered:', allEvents.length - uncovered.length, 'uncovered:', uncovered.length);
-
-      // 4. Send uncovered events to Ollama, save results to Firestore
-      if (uncovered.length === 0) return;
-      const BATCH = 20;
-      const allEstimates: SpendingEstimate[] = [];
-      for (let i = 0; i < uncovered.length; i += BATCH) {
-        const batch = uncovered.slice(i, i + BATCH);
-        try {
-          const ollamaRes = await fetch(`${API_BASE_URL}/ollama/analyze`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ events: batch }),
-          });
-          if (!ollamaRes.ok) { console.warn('[Ollama] non-ok response'); continue; }
-          const analysis = await ollamaRes.json();
-          let estimates: SpendingEstimate[] = [];
-          try {
-            estimates = analysis.parsed_estimates
-              ? JSON.parse(analysis.parsed_estimates).estimates ?? []
-              : JSON.parse(analysis.raw_response?.match(/\{[\s\S]*\}/)?.[0] ?? '{}').estimates ?? [];
-          } catch (_) {}
-          allEstimates.push(...estimates);
-        } catch (e) {
-          console.warn('[Ollama] batch failed (backend may be offline):', (e as any)?.message);
-        }
-      }
-
-      if (allEstimates.length > 0) {
-        mergePredictions(allEstimates);
-        try {
-          const db = getFirestore(app);
-          const savedAt = new Date().toISOString();
-          await Promise.all(allEstimates.map((p: SpendingEstimate) =>
-            setDoc(doc(db, 'users', userId!, 'spending_analyses', `${p.date}__${p.event.replace(/\//g, '-')}`.slice(0, 500)), {
-              date: p.date, event: p.event,
-              low: p.low, medium: p.medium, high: p.high,
-              created_at: savedAt,
-            })
-          ));
-          console.log('[Firestore] saved', allEstimates.length, 'new predictions');
-        } catch (e) {
-          console.warn('[Firestore] save failed:', e);
-        }
-      }
+      console.log('[Calendar] loaded', items.length, 'events for', key);
     };
 
     fetchEvents();

@@ -6,17 +6,20 @@ import {
   ScrollView,
   TouchableOpacity,
   Platform,
+  NativeModules,
+  Image as RNImage,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
+import Rive from 'rive-react-native';
+
+// Rive requires a compiled native pod — only render it when the module is present
+const RIVE_AVAILABLE = !!NativeModules.RiveReactNativeEventModule;
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import CheckInModal from '../../components/CheckInModal';
 import PredictiveGraphRow from '../../components/PredictiveGraphRow';
-import { API_BASE_URL } from '../../constants/config';
-import { getFirestore, setDoc, doc } from 'firebase/firestore';
-import { app } from '../../src/config/firebase';
 import * as TaskManager from 'expo-task-manager';
 
 // ── Figma assets (local SVGs with CSS vars resolved) ─────────────────────────
@@ -27,6 +30,8 @@ const flameIcon          = require('../../assets/icons/flameIcon.svg');
 const bagIcon            = require('../../assets/icons/bagIcon.svg');
 
 // ── Farm background images (1 = worst, 5 = best) ─────────────────────────────
+const PIG_IMAGE = require('../../assets/images/pig.png');
+
 const FARM_IMAGES = [
   require('../../assets/images/1.jpg'),
   require('../../assets/images/2.jpg'),
@@ -117,7 +122,7 @@ const LOCATION_TASK_NAME = 'spent-background-location';
 export default function HomeScreen() {
   const { top } = useSafeAreaInsets();
   const { token: paramToken, checkIn } = useLocalSearchParams();
-  const { token: contextToken, checkInResults, predictions, mergePredictions, predictionsLoaded, pendingLocations, monthlyBudget } = useAuth();
+  const { token: contextToken, checkInResults, predictions, predictionsLoaded, pendingLocations, monthlyBudget } = useAuth();
   const token = contextToken ?? paramToken;
   const [trackingActive, setTrackingActive] = useState(false);
   const [farmAspectRatio, setFarmAspectRatio] = useState(1);
@@ -185,7 +190,7 @@ export default function HomeScreen() {
   // Track which "YYYY-M" months have already been fetched so we don't re-request
   const [fetchedMonths, setFetchedMonths] = useState<Set<string>>(new Set());
 
-  const visibleDates = getVisibleDates(dayOffset);
+  const visibleDates = useMemo(() => getVisibleDates(dayOffset), [dayOffset]);
 
   useEffect(() => {
     if (!token || !predictionsLoaded) return;
@@ -197,24 +202,12 @@ export default function HomeScreen() {
 
     if (needed.length === 0) return;
 
-    const parseEvents = (items: any[]): { [key: string]: number } => {
+    const parseEventCounts = (items: any[]): { [key: string]: number } => {
       const counts: { [key: string]: number } = {};
-      const monthNames: Record<string, string> = {
-        January: '01', February: '02', March: '03', April: '04',
-        May: '05', June: '06', July: '07', August: '08',
-        September: '09', October: '10', November: '11', December: '12',
-      };
       items.forEach((event: any) => {
         let dateStr = '';
-        if (event.start?.date) {
-          if (/^\d{4}-\d{2}-\d{2}$/.test(event.start.date)) {
-            dateStr = event.start.date;
-          } else {
-            const match = event.start.date.match(/^[A-Za-z]+,\s([A-Za-z]+)\s(\d{1,2}),\s(\d{4})$/);
-            if (match) {
-              dateStr = `${match[3]}-${monthNames[match[1]]}-${match[2].padStart(2, '0')}`;
-            }
-          }
+        if (event.start?.date && /^\d{4}-\d{2}-\d{2}$/.test(event.start.date)) {
+          dateStr = event.start.date;
         } else if (event.start?.dateTime) {
           dateStr = event.start.dateTime.split('T')[0];
         }
@@ -223,112 +216,25 @@ export default function HomeScreen() {
       return counts;
     };
 
-    const fetchMonth = async (year: number, month: number) => {
-      const monthStart = new Date(year, month, 1);
-      const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
-      const response = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${monthStart.toISOString()}&timeMax=${monthEnd.toISOString()}&singleEvents=true&orderBy=startTime`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const data = await response.json();
-      if (!response.ok) throw new Error('Failed to fetch events');
-      const items = data.items || [];
-      return { counts: parseEvents(items), items };
-    };
-
     const fetchNeeded = async () => {
       try {
         const results = await Promise.all(
-          needed.map(key => {
+          needed.map(async key => {
             const [year, month] = key.split('-').map(Number);
-            return fetchMonth(year, month);
+            const start = new Date(year, month, 1);
+            const end = new Date(year, month + 1, 0, 23, 59, 59);
+            const res = await fetch(
+              `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${start.toISOString()}&timeMax=${end.toISOString()}&singleEvents=true&orderBy=startTime`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            if (!res.ok) throw new Error('Failed to fetch events');
+            const data = await res.json();
+            return parseEventCounts(data.items || []);
           })
         );
-        const mergedCounts = Object.assign({}, ...results.map(r => r.counts));
+        const mergedCounts = Object.assign({}, ...results);
         setEventCounts(prev => ({ ...prev, ...mergedCounts }));
         setFetchedMonths(prev => new Set([...prev, ...needed]));
-
-        // Collect upcoming events (within visible window) and send to backend
-        const visibleDateStrs = new Set(visibleDates.map(toDateStr));
-        console.log('[Ollama] visible date range:', [...visibleDateStrs]);
-
-        const allItems = results.flatMap(r => r.items);
-        console.log('[Ollama] total calendar items fetched:', allItems.length);
-
-        const upcomingEvents = allItems
-          .filter((ev: any) => {
-            const d = ev.start?.date?.split('T')[0] ?? ev.start?.dateTime?.split('T')[0];
-            return d && visibleDateStrs.has(d);
-          })
-          .map((ev: any) => ({
-            title: ev.summary ?? 'Untitled',
-            date: ev.start?.date?.split('T')[0] ?? ev.start?.dateTime?.split('T')[0],
-          }));
-
-        const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
-        // Filter out events already covered by Firebase predictions
-        const coveredKeys = new Set(predictions.map(p => `${p.date}|${norm(p.event)}`));
-        const uncoveredEvents = upcomingEvents.filter(
-          e => !coveredKeys.has(`${e.date}|${norm(e.title)}`)
-        );
-        console.log('[Ollama] visible:', upcomingEvents.length, 'uncovered:', uncoveredEvents.length);
-
-        if (uncoveredEvents.length > 0) {
-          // Batch into groups of 5 so Ollama doesn't truncate
-          const BATCH = 20;
-          const allEstimates: any[] = [];
-          for (let i = 0; i < uncoveredEvents.length; i += BATCH) {
-            const batch = uncoveredEvents.slice(i, i + BATCH);
-            try {
-              const ollamaRes = await fetch(`${API_BASE_URL}/ollama/analyze`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ events: batch }),
-              });
-              if (ollamaRes.ok) {
-                const analysis = await ollamaRes.json();
-                let estimates: any[] = [];
-                try {
-                  if (analysis.parsed_estimates) {
-                    estimates = JSON.parse(analysis.parsed_estimates).estimates ?? [];
-                  } else {
-                    const match = analysis.raw_response?.match(/\{[\s\S]*\}/);
-                    if (match) estimates = JSON.parse(match[0]).estimates ?? [];
-                  }
-                } catch (_) {}
-                allEstimates.push(...estimates);
-              }
-            } catch (e) {
-              console.warn('[Ollama] batch failed:', e);
-            }
-          }
-
-          if (allEstimates.length > 0) {
-            mergePredictions(allEstimates);
-            console.log('[Ollama] merged', allEstimates.length, 'predictions');
-
-            // Save each estimate as its own document
-            try {
-              const db = getFirestore(app);
-              const savedAt = new Date().toISOString();
-              await Promise.all(allEstimates.map((p: any) =>
-                setDoc(doc(db, 'spending_analyses', `${p.date}__${String(p.event).replace(/\//g, '-')}`.slice(0, 500)), {
-                  date:       p.date,
-                  event:      p.event,
-                  low:        p.low,
-                  medium:     p.medium,
-                  high:       p.high,
-                  created_at: savedAt,
-                })
-              ));
-              console.log('[Firestore] analysis saved');
-            } catch (e) {
-              console.warn('[Firestore] save failed:', e);
-            }
-          }
-        } else {
-          console.log('[Ollama] no events in visible window — skipping backend call');
-        }
       } catch (e) {
         console.warn('[fetchNeeded] error:', e);
       }
@@ -398,6 +304,25 @@ export default function HomeScreen() {
 
       {/* ── Farm transparent section — shows farm bg, overlays controls ── */}
       <View style={styles.farmSection}>
+        {/* Pig — animated when native module is compiled in, static otherwise */}
+        <View style={styles.pigContainer}>
+          {RIVE_AVAILABLE ? (
+            <Rive
+              source={require('../../assets/animations/spent.riv')}
+              artboardName="Artboard"
+              animationName="idle bounce"
+              autoplay
+              style={styles.pigAnimation}
+            />
+          ) : (
+            <RNImage
+              source={PIG_IMAGE}
+              style={styles.pigAnimation}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+
         {/* 5-step progress bar — bottom left, over pig sty */}
         <View style={styles.progressBarRow}>
           {[1, 2, 3, 4, 5].map(step => (
@@ -407,18 +332,6 @@ export default function HomeScreen() {
             />
           ))}
         </View>
-      {/* ── Hero card ── */}
-      <View style={styles.heroCard}>
-        {/* Content row */}
-        <View style={styles.heroContent}>
-          {/* Savings amount */}
-          <View style={styles.savingsGroup}>
-            <View style={styles.savingsAmountRow}>
-              <Image source={dollarSignLarge} style={styles.dollarLarge} contentFit="contain" />
-              <Text style={styles.savedAmount}>{totalSaved}</Text>
-            </View>
-            <Text style={styles.savedLabel}>saved with Spent</Text>
-          </View>
 
         {/* Check-in + streak — bottom right */}
         <View style={styles.farmOverlayRight}>
@@ -687,6 +600,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: 16,
     paddingHorizontal: 16,
+  },
+  pigContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: 20,
+  },
+  pigAnimation: {
+    width: 160,
+    height: 180,
   },
   farmOverlayRight: {
     alignItems: 'center',
