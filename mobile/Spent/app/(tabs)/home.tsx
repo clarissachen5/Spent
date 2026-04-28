@@ -1,20 +1,17 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Platform,
-  NativeModules,
-  Image as RNImage,
-} from 'react-native';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import Rive from 'rive-react-native';
+import PigAnimation from '../../components/PigAnimation';
 
-// Rive requires a compiled native pod — only render it when the module is present
-const RIVE_AVAILABLE = !!NativeModules.RiveReactNativeEventModule;
+// Category spending → pig accessory boolean input name in the Rive state machine
+const CATEGORY_ACCESSORY: Record<string, string> = {
+  Coffee:         'coffee(on/off)',
+  Food:           'necklace(on/off)',
+  Shopping:       'glasses(on/off)',
+  Entertainment:  'crown(on/off)',
+  Transportation: 'wings(on/off)',
+};
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
@@ -148,6 +145,22 @@ export default function HomeScreen() {
       totals[r.category] = (totals[r.category] || 0) + r.amount;
     });
     return totals;
+  }, [checkInResults]);
+
+  // Boolean map passed directly to PigAnimation WebView
+  // Show accessory whenever the user has visited that category this month
+  const pigAccessories = useMemo(() => {
+    const now = new Date();
+    const acc: Record<string, boolean> = {};
+    Object.entries(CATEGORY_ACCESSORY).forEach(([cat, input]) => {
+      acc[input] = checkInResults.some(r => {
+        if (!r.visited || r.category !== cat) return false;
+        const d = r.timestamp instanceof Date ? r.timestamp : new Date(r.timestamp);
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      });
+    });
+    console.log('[home] pigAccessories:', JSON.stringify(acc));
+    return acc;
   }, [checkInResults]);
 
   // Pick farm background + spending score based on actual spend vs monthly budget
@@ -304,22 +317,12 @@ export default function HomeScreen() {
 
       {/* ── Farm transparent section — shows farm bg, overlays controls ── */}
       <View style={styles.farmSection}>
-        {/* Pig — animated when native module is compiled in, static otherwise */}
+        {/* Pig — rendered via WebView Rive web SDK (works with New Architecture) */}
         <View style={styles.pigContainer}>
-          {RIVE_AVAILABLE ? (
-            <Rive
-              source={require('../../assets/animations/spent.riv')}
-              artboardName="Artboard"
-              animationName="idle bounce"
-              autoplay
-              style={styles.pigAnimation}
-            />
+          {Platform.OS !== 'web' ? (
+            <PigAnimation accessories={pigAccessories} style={styles.pigAnimation} />
           ) : (
-            <RNImage
-              source={PIG_IMAGE}
-              style={styles.pigAnimation}
-              resizeMode="contain"
-            />
+            <Image source={PIG_IMAGE} style={styles.pigAnimation} contentFit="contain" />
           )}
         </View>
 
