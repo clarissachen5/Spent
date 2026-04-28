@@ -24,17 +24,22 @@ export interface PredictiveGraphRowProps {
 
 // Smooth Bezier curve through given points
 function smoothPath(pts: { x: number; y: number }[]): string {
-  if (pts.length === 0) return '';
-  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
-  let d = `M ${pts[0].x} ${pts[0].y}`;
-  for (let i = 1; i < pts.length; i++) {
-    const p0 = pts[i - 1];
-    const p1 = pts[i];
+  // Drop any non-finite points so a single bad value can't poison the whole path
+  const clean = pts.filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+  if (clean.length === 0) return '';
+  if (clean.length === 1) return `M ${clean[0].x} ${clean[0].y}`;
+  let d = `M ${clean[0].x} ${clean[0].y}`;
+  for (let i = 1; i < clean.length; i++) {
+    const p0 = clean[i - 1];
+    const p1 = clean[i];
     const dx = (p1.x - p0.x) * 0.4;
     d += ` C ${p0.x + dx} ${p0.y}, ${p1.x - dx} ${p1.y}, ${p1.x} ${p1.y}`;
   }
   return d;
 }
+
+const finiteOr = (v: unknown, fallback: number): number =>
+  typeof v === 'number' && Number.isFinite(v) ? v : fallback;
 
 export default function PredictiveGraphRow({
   width,
@@ -50,8 +55,8 @@ export default function PredictiveGraphRow({
   showDayLabels,
   dayLabels,
 }: PredictiveGraphRowProps) {
-  const safeMaxE = Math.max(1, maxEvents);
-  const safeMaxS = Math.max(1, maxSpending);
+  const safeMaxE = Math.max(1, finiteOr(maxEvents, 1));
+  const safeMaxS = Math.max(1, finiteOr(maxSpending, 1));
 
   const topPad    = 6;
   const bottomPad = 4;
@@ -63,7 +68,7 @@ export default function PredictiveGraphRow({
   const eventPts = events
     .map((v, i) => ({
       x: (i + 0.5) * stepX,
-      y: baseline - (v / safeMaxE) * amp,
+      y: baseline - (finiteOr(v, 0) / safeMaxE) * amp,
       i,
       blank: blanks?.[i] ?? false,
     }))
@@ -72,7 +77,7 @@ export default function PredictiveGraphRow({
   const spendPts = spending
     .map((v, i) => ({
       x: (i + 0.5) * stepX,
-      y: baseline - (v / safeMaxS) * amp,
+      y: baseline - (finiteOr(v, 0) / safeMaxS) * amp,
       i,
       blank: blanks?.[i] ?? false,
     }))
@@ -90,7 +95,9 @@ export default function PredictiveGraphRow({
       ? (selectedIndex + 0.5) * stepX
       : null;
   const selectedEventY =
-    selectedIndex != null ? baseline - (events[selectedIndex] / safeMaxE) * amp : null;
+    selectedIndex != null
+      ? baseline - (finiteOr(events[selectedIndex], 0) / safeMaxE) * amp
+      : null;
 
   return (
     <View style={{ width }}>

@@ -106,9 +106,11 @@ export default function CalendarScreen() {
   const predictedTotalsByDate: { [date: string]: number } = {};
   const predictedByEventKey: { [key: string]: { amount: number; description: string } } = {};
   predictions.forEach((p: SpendingEstimate) => {
-    predictedTotalsByDate[p.date] = (predictedTotalsByDate[p.date] || 0) + Number(p.medium?.amount ?? 0);
+    const raw = Number(p.medium?.amount ?? 0);
+    const amount = Number.isFinite(raw) ? raw : 0;
+    predictedTotalsByDate[p.date] = (predictedTotalsByDate[p.date] || 0) + amount;
     predictedByEventKey[`${p.date}|${norm(p.event)}`] = {
-      amount: Number(p.medium?.amount ?? 0),
+      amount,
       description: p.medium?.description ?? '',
     };
   });
