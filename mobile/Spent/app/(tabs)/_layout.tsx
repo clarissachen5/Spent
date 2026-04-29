@@ -1,19 +1,35 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
-const DARK_GREEN = '#0a542f';
+const LIME_GREEN = '#cdf545';
+const DARK_OUTLINE = '#0a542f';
+const ACTIVE_GREEN = '#4a7a1e';
 const GRAY_INACTIVE = '#a5a5a5';
+
+type IconName = React.ComponentProps<typeof IconSymbol>['name'];
+
+function TabIcon({ name, focused }: { name: IconName; focused: boolean }) {
+  if (!focused) {
+    return <IconSymbol size={24} name={name} color={GRAY_INACTIVE} />;
+  }
+  return (
+    <View style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>
+      <IconSymbol size={28} name={name} color={DARK_OUTLINE} style={{ position: 'absolute' }} />
+      <IconSymbol size={22} name={name} color={LIME_GREEN} />
+    </View>
+  );
+}
 
 export default function TabLayout() {
   return (
     <Tabs
       initialRouteName="signup"
       screenOptions={{
-        tabBarActiveTintColor: DARK_GREEN,
+        tabBarActiveTintColor: ACTIVE_GREEN,
         tabBarInactiveTintColor: GRAY_INACTIVE,
         headerShown: false,
         tabBarButton: HapticTab,
@@ -63,28 +79,28 @@ export default function TabLayout() {
         name="home"
         options={{
           title: 'Dashboard',
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="chart.bar.fill" color={color} />,
+          tabBarIcon: ({ focused }) => <TabIcon name="chart.bar.fill" focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="calendar"
         options={{
           title: 'Calendar',
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="calendar" color={color} />,
+          tabBarIcon: ({ focused }) => <TabIcon name="calendar" focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="summary"
         options={{
           title: 'Summary',
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="chart.pie.fill" color={color} />,
+          tabBarIcon: ({ focused }) => <TabIcon name="chart.pie.fill" focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="person.fill" color={color} />,
+          tabBarIcon: ({ focused }) => <TabIcon name="person.fill" focused={focused} />,
         }}
       />
       <Tabs.Screen
