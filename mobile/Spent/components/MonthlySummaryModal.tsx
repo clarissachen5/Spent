@@ -146,9 +146,12 @@ export default function MonthlySummaryModal({ visible, onClose }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ spending_by_category: byCategory, total, month: monthLabel }),
     })
-      .then(r => r.json())
-      .then(data => setSummary(data.summary || ''))
-      .catch(() => setSummary('Could not load AI summary — make sure the backend is running.'))
+      .then(r => {
+        if (!r.ok) throw new Error(`Backend error ${r.status}`);
+        return r.json();
+      })
+      .then(data => setSummary(data.summary || 'No summary returned.'))
+      .catch(() => setSummary('Could not load AI summary — make sure the backend and Ollama are running.'))
       .finally(() => setLoadingSummary(false));
   }, [visible]);
 

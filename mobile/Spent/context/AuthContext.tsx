@@ -2,16 +2,19 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getFirestore, collection, getDocs, setDoc, doc, addDoc, deleteDoc, query, where, updateDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { app } from '../src/config/firebase';
-import { API_BASE_URL } from '../constants/config';
+import { API_BASE_URL, USER_ID_KEY } from '../constants/config';
 import { startLocationTracking } from '../services/LocationTracker';
 
-export const USER_ID_KEY = 'spent_user_id';
 
 export interface UserProfile {
   city: string;
   school: string;
   categories: string[];
   goals: string[];
+  pigName?: string;
+  userName?: string;
+  userAge?: string;
+  annualIncome?: string;
 }
 
 export interface CheckInResult {
