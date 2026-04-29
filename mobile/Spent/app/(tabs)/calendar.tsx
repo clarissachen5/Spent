@@ -107,9 +107,11 @@ export default function CalendarScreen() {
   const predictedTotalsByDate: { [date: string]: number } = {};
   const predictedByEventKey: { [key: string]: { amount: number; description: string } } = {};
   predictions.forEach((p: SpendingEstimate) => {
-    predictedTotalsByDate[p.date] = (predictedTotalsByDate[p.date] || 0) + Number(p.medium?.amount ?? 0);
+    const raw = Number(p.medium?.amount ?? 0);
+    const amt = Number.isFinite(raw) ? raw : 0;
+    predictedTotalsByDate[p.date] = (predictedTotalsByDate[p.date] || 0) + amt;
     predictedByEventKey[`${p.date}|${norm(p.event)}`] = {
-      amount: Number(p.medium?.amount ?? 0),
+      amount: amt,
       description: p.medium?.description ?? '',
     };
   });
@@ -789,5 +791,104 @@ const styles = StyleSheet.create({
   eventDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: '#f0f0f0',
+  },
+
+  // ── List sections (Check-in / Upcoming events) ──────────────────────────
+  listSection: {
+    marginTop: 18,
+  },
+  listLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8e8e93',
+    letterSpacing: 0.6,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+
+  // ── Check-in pill rows ──────────────────────────────────────────────────
+  checkInPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 24,
+    marginBottom: 8,
+  },
+  checkInName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: DARK_TEXT,
+  },
+  checkInAmountNew: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: DARK_TEXT,
+    marginRight: 10,
+  },
+  editDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editDotText: {
+    fontSize: 11,
+    color: '#8e8e93',
+  },
+
+  // ── Upcoming event cards ────────────────────────────────────────────────
+  eventRowNew: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f7f7f5',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingRight: 12,
+    paddingLeft: 0,
+    marginBottom: 8,
+  },
+  eventTimeBlock: {
+    width: 70,
+    borderLeftWidth: 3,
+    paddingLeft: 10,
+    paddingVertical: 2,
+    marginRight: 10,
+  },
+  eventTimeNew: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: DARK_TEXT,
+    lineHeight: 14,
+  },
+  eventTitleNew: {
+    flex: 1,
+    fontSize: 13,
+    color: DARK_TEXT,
+    fontWeight: '500',
+  },
+  eventSpendPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e3e3e0',
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    gap: 4,
+    marginLeft: 8,
+  },
+  eventSpendText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: DARK_TEXT,
+  },
+  eventSpendSparkle: {
+    fontSize: 11,
+    color: DEEP_GREEN,
   },
 });

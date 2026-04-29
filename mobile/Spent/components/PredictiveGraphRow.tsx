@@ -50,8 +50,8 @@ export default function PredictiveGraphRow({
   showDayLabels,
   dayLabels,
 }: PredictiveGraphRowProps) {
-  const safeMaxE = Math.max(1, maxEvents);
-  const safeMaxS = Math.max(1, maxSpending);
+  const safeMaxE = Number.isFinite(maxEvents) && maxEvents > 0 ? maxEvents : 1;
+  const safeMaxS = Number.isFinite(maxSpending) && maxSpending > 0 ? maxSpending : 1;
 
   const topPad    = 6;
   const bottomPad = 4;

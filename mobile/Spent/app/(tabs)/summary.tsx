@@ -1,19 +1,19 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   Modal,
   Pressable,
 } from 'react-native';
 import { Image } from 'expo-image';
-import Svg, { Path, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
-import { API_BASE_URL } from '../../constants/config';
+
+const heroLandscape = require('../../assets/icons/heroLandscape.svg');
 
 // ── Design tokens (Figma) ────────────────────────────────────────────────────
 const PAGE_BG      = '#f4f5f5';
@@ -24,7 +24,6 @@ const BLACK        = '#1e1d19';
 const GRAY_TITLE   = '#c9cbcb';
 const GRAY_TEXT    = '#a5a5a5';
 const PILL_GRAY    = '#e7e9e9';
-const DIVIDER      = '#f0f0f0';
 
 // Pastel palette mirrored from MonthlySummaryModal so the donut matches
 const CATEGORY_COLORS: Record<string, string> = {
@@ -54,9 +53,6 @@ const entertainmentIcon  = require('../../assets/icons/entertainmentIcon.svg');
 const transportationIcon = require('../../assets/icons/transportationIcon.svg');
 const shoppingIcon       = require('../../assets/icons/shoppingIcon.svg');
 const otherIcon          = require('../../assets/icons/otherIcon.svg');
-const bagIcon            = require('../../assets/icons/bagIcon.svg');
-const clipboardIcon      = require('../../assets/icons/clipboardIcon.svg');
-
 const CATEGORY_ICON: Record<string, any> = {
   Food: foodIcon,
   Coffee: coffeeIcon,
@@ -181,21 +177,32 @@ export default function SummaryScreen() {
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
   }, [monthCheckIns]);
 
-  // Location frequency + spend
+  // Location frequency + spend, plus a per-location dominant category for icon lookup
   const locationStats = useMemo(() => {
-    const counts: Record<string, number> = {};
-    const sums:   Record<string, number> = {};
+    const counts:   Record<string, number> = {};
+    const sums:     Record<string, number> = {};
+    const catByLoc: Record<string, Record<string, number>> = {};
     monthCheckIns.forEach(ci => {
       const loc = ci.location || 'Unknown';
+      const cat = ci.category || 'Other';
       counts[loc] = (counts[loc] || 0) + 1;
       sums[loc]   = (sums[loc] || 0) + (ci.amount || 0);
+      catByLoc[loc] = catByLoc[loc] || {};
+      catByLoc[loc][cat] = (catByLoc[loc][cat] || 0) + 1;
     });
+    const dominantCategory = (loc: string): string | null => {
+      const cats = catByLoc[loc];
+      if (!cats) return null;
+      return Object.entries(cats).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    };
     const byCount = Object.entries(counts).sort((a, b) => b[1] - a[1]);
     const bySum   = Object.entries(sums).sort((a, b) => b[1] - a[1]);
     return {
-      mostFrequent: byCount[0]?.[0] ?? '—',
-      topSpend:     bySum[0]?.[0] ?? '—',
-      topSpendAmt:  bySum[0]?.[1] ?? 0,
+      mostFrequent:        byCount[0]?.[0] ?? null,
+      mostFrequentCat:     byCount[0] ? dominantCategory(byCount[0][0]) : null,
+      topSpend:            bySum[0]?.[0] ?? null,
+      topSpendCat:         bySum[0] ? dominantCategory(bySum[0][0]) : null,
+      topSpendAmt:         bySum[0]?.[1] ?? 0,
     };
   }, [monthCheckIns]);
 
@@ -217,43 +224,25 @@ export default function SummaryScreen() {
     });
   }, [categoryData, total]);
 
-  // AI summary (same endpoint the modal used)
-  const [summary, setSummary]               = useState('');
-  const [loadingSummary, setLoadingSummary] = useState(false);
-
-  useEffect(() => {
-    if (categoryData.length === 0) {
-      setSummary('');
-      return;
-    }
-    setLoadingSummary(true);
-    setSummary('');
-    const byCategory = Object.fromEntries(categoryData.map(d => [d.category, d.amount]));
-    fetch(`${API_BASE_URL}/ollama/spending-summary`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        spending_by_category: byCategory,
-        total,
-        month: `${monthLabel} ${selectedYear}`,
-      }),
-    })
-      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
-      .then(d => setSummary(d.summary || ''))
-      .catch(() => setSummary(''))
-      .finally(() => setLoadingSummary(false));
-  }, [selectedMonth, selectedYear, categoryData.length]);
-
   const spender = spenderType(total, userProfile?.goals ?? []);
 
-  const mostSpentCategory  = categoryData[0]?.category ?? '—';
-  const mostEntriesCat     = entriesByCategory[0]?.[0] ?? '—';
+  const mostSpentCategory  = categoryData[0]?.category ?? null;
+  const mostEntriesCat     = entriesByCategory[0]?.[0] ?? null;
   const mostFrequentedLoc  = locationStats.mostFrequent;
   const locationToAvoid    = locationStats.topSpend;
 
-  const biggestSpendAmt = Math.max(0, ...monthCheckIns.map(ci => ci.amount || 0));
-  const biggestSpend    = monthCheckIns.find(ci => (ci.amount || 0) === biggestSpendAmt);
-  const favoriteCategory = mostEntriesCat;
+  const displayName = userProfile?.school?.split(' ')[0] || 'Hello';
+
+  const tiles: {
+    label: string;
+    value: string | null;
+    iconCategory: string | null;
+  }[] = [
+    { label: 'MOST SPENT CATEGORY',     value: mostSpentCategory,    iconCategory: mostSpentCategory },
+    { label: 'LOCATION TO AVOID',       value: locationToAvoid,      iconCategory: locationStats.topSpendCat },
+    { label: 'MOST ENTRIES CATEGORY',   value: mostEntriesCat,       iconCategory: mostEntriesCat },
+    { label: 'MOST FREQUENTED LOCATION',value: mostFrequentedLoc,    iconCategory: locationStats.mostFrequentCat },
+  ];
 
   return (
     <View style={[styles.page, { paddingTop: insets.top }]}>
@@ -264,158 +253,86 @@ export default function SummaryScreen() {
       >
         <Text style={styles.pageTitle}>Summary</Text>
 
-        {/* ── Donut card ──────────────────────────────── */}
+        {/* ── Donut card with landscape backdrop ───────── */}
         <View style={styles.donutCard}>
-          <Svg
-            style={StyleSheet.absoluteFill as any}
-            width="100%"
-            height="100%"
-            pointerEvents="none"
-            preserveAspectRatio="none"
-            viewBox="0 0 1 1"
-          >
-            <Defs>
-              <LinearGradient id="donutBg" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#ffffff" stopOpacity={1} />
-                <Stop offset="0.4" stopColor="#ffffff" stopOpacity={1} />
-                <Stop offset="1" stopColor={LIME_GREEN} stopOpacity={0.18} />
-              </LinearGradient>
-            </Defs>
-            <Rect x="0" y="0" width="1" height="1" fill="url(#donutBg)" />
-          </Svg>
-
           <View style={styles.donutCardContent}>
-          <TouchableOpacity
-            style={styles.monthPill}
-            onPress={() => setPickerOpen(true)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.monthPillText}>{monthLabel}</Text>
-            <Text style={styles.monthPillChevron}>▾</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.monthPill}
+              onPress={() => setPickerOpen(true)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.monthPillText}>
+                {monthLabel.toUpperCase()} SPENDING
+              </Text>
+              <Text style={styles.monthPillChevron}>▾</Text>
+            </TouchableOpacity>
 
-          <View style={styles.chartWrap}>
-            {total === 0 ? (
-              <View style={[styles.donutEmpty, { width: SIZE, height: SIZE }]}>
-                <Text style={styles.emptyTitle}>No spending yet</Text>
-                <Text style={styles.emptyHint}>for {monthLabel} {selectedYear}</Text>
-              </View>
-            ) : (
-              <>
-                <Svg width={SIZE} height={SIZE}>
-                  {slices.map((slice, i) => (
-                    <Path key={i} d={slice.path} fill={slice.color} />
-                  ))}
-                </Svg>
-                <View
-                  style={[
-                    styles.chartCenter,
-                    { width: innerR * 2, height: innerR * 2, borderRadius: innerR },
-                  ]}
-                >
-                  <Text style={styles.centerSubtitle}>In {monthLabel} You spent</Text>
-                  <View style={styles.centerAmountRow}>
-                    <Text style={styles.centerDollar}>$</Text>
-                    <Text style={styles.centerAmount}>{total.toFixed(0)}</Text>
+            <View style={styles.chartWrap}>
+              {total === 0 ? (
+                <View style={[styles.donutEmpty, { width: SIZE, height: SIZE }]}>
+                  <Text style={styles.emptyTitle}>No spending yet</Text>
+                  <Text style={styles.emptyHint}>for {monthLabel} {selectedYear}</Text>
+                </View>
+              ) : (
+                <>
+                  <Svg width={SIZE} height={SIZE}>
+                    {slices.map((slice, i) => (
+                      <Path key={i} d={slice.path} fill={slice.color} />
+                    ))}
+                  </Svg>
+                  <View
+                    style={[
+                      styles.chartCenter,
+                      { width: innerR * 2, height: innerR * 2, borderRadius: innerR },
+                    ]}
+                  >
+                    <Text style={styles.centerAmount}>${total.toFixed(0)}</Text>
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
+
+          <Image
+            source={heroLandscape}
+            style={styles.landscape}
+            contentFit="cover"
+          />
+        </View>
+
+        {/* ── Info card: name + spender + 2x2 stat tiles ── */}
+        <View style={styles.infoCard}>
+          <View style={styles.nameRow}>
+            <Text style={styles.userName}>{displayName}</Text>
+            <View style={styles.editDot}>
+              <Text style={styles.editDotText}>✎</Text>
+            </View>
+          </View>
+          <Text style={styles.spenderLine}>
+            in {monthLabel} you were a <Text style={styles.spenderBold}>{spender}</Text>
+          </Text>
+
+          <View style={styles.tileGrid}>
+            {tiles.map((t, i) => {
+              const cat = t.iconCategory;
+              const icon = cat ? CATEGORY_ICON[cat] : null;
+              const bg   = cat ? CATEGORY_PILL_BG[cat] ?? PILL_GRAY : PILL_GRAY;
+              return (
+                <View key={i} style={styles.tile}>
+                  <Text style={styles.tileLabel}>{t.label}</Text>
+                  <View style={[styles.tilePill, { backgroundColor: bg }]}>
+                    {icon && (
+                      <Image source={icon} style={styles.tileIcon} contentFit="contain" />
+                    )}
+                    <Text style={styles.tileValue} numberOfLines={1}>
+                      {t.value ?? '—'}
+                    </Text>
                   </View>
                 </View>
-              </>
-            )}
-          </View>
-          </View>
-        </View>
-
-        {/* ── Name / spender type ─────────────────────── */}
-        <View style={styles.nameBlock}>
-          <Text style={styles.userName}>
-            {userProfile?.school ? userProfile.school.split(' ')[0] : 'Hello'}
-          </Text>
-          <Text style={styles.spenderLine}>
-            In {monthLabel} you were a <Text style={styles.spenderBold}>{spender}</Text>
-          </Text>
-        </View>
-
-        {/* ── Category legend with pill amounts ───────── */}
-        <View style={styles.legend}>
-          {categoryData.slice(0, 4).map((d) => {
-            const pillBg = CATEGORY_PILL_BG[d.category] ?? d.color + '55';
-            const icon   = CATEGORY_ICON[d.category] ?? otherIcon;
-            return (
-              <View key={d.category} style={styles.legendRow}>
-                <Image source={icon} style={styles.legendIcon} contentFit="contain" />
-                <Text style={styles.legendCat}>{d.category}</Text>
-                <View style={[styles.legendPill, { backgroundColor: pillBg }]}>
-                  <Text style={styles.legendPillText}>${d.amount.toFixed(2)}</Text>
-                </View>
-              </View>
-            );
-          })}
-          {categoryData.length === 0 && (
-            <Text style={styles.emptyInline}>No categorized spending for {monthLabel}.</Text>
-          )}
-        </View>
-
-        {/* ── 4-up stat circles ───────────────────────── */}
-        <View style={styles.statRow}>
-          <StatCircle
-            label="Most Spent Category"
-            value={mostSpentCategory}
-            icon={CATEGORY_ICON[mostSpentCategory]}
-          />
-          <StatCircle
-            label="Most Entries Category"
-            value={mostEntriesCat}
-            icon={CATEGORY_ICON[mostEntriesCat]}
-          />
-          <StatCircle label="Most Frequented Location" value={mostFrequentedLoc} compact />
-          <StatCircle label="Location to Avoid" value={locationToAvoid} compact />
-        </View>
-
-        {/* ── Predictive spending label ───────────────── */}
-        <View style={styles.predictivePillWrap}>
-          <View style={styles.predictivePill}>
-            <Text style={styles.predictivePillText}>PREDICTIVE SPENDING</Text>
+              );
+            })}
           </View>
         </View>
-
-        {/* ── Two prediction cards ────────────────────── */}
-        <View style={styles.predictRow}>
-          <View style={styles.predictCard}>
-            <Text style={styles.predictTitle}>Biggest Spend</Text>
-            {biggestSpend && biggestSpendAmt > 0 ? (
-              <>
-                <Text style={styles.predictValue}>${biggestSpendAmt.toFixed(2)}</Text>
-                <Text style={styles.predictSub} numberOfLines={1}>
-                  {biggestSpend.location}
-                </Text>
-              </>
-            ) : (
-              <Text style={styles.predictSub}>No spend yet</Text>
-            )}
-          </View>
-          <View style={styles.predictCard}>
-            <Text style={styles.predictTitle}>Favorite Category</Text>
-            <Text style={styles.predictValue}>{favoriteCategory}</Text>
-            <Text style={styles.predictSub}>
-              {entriesByCategory[0]?.[1] ?? 0} check-ins
-            </Text>
-          </View>
-        </View>
-
-        {/* ── AI Insights (optional, preserved from old modal) ── */}
-        {(loadingSummary || summary.length > 0) && (
-          <View style={styles.aiCard}>
-            <Text style={styles.aiLabel}>AI Insights</Text>
-            {loadingSummary ? (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator color={DARK_GREEN} size="small" />
-                <Text style={styles.loadingText}>Generating your summary…</Text>
-              </View>
-            ) : (
-              <Text style={styles.summaryText}>{summary}</Text>
-            )}
-          </View>
-        )}
       </ScrollView>
 
       {/* ── Month picker modal ─────────────────────────── */}
@@ -456,36 +373,6 @@ export default function SummaryScreen() {
   );
 }
 
-function StatCircle({
-  label,
-  value,
-  compact,
-  icon,
-}: {
-  label: string;
-  value: string;
-  compact?: boolean;
-  icon?: any;
-}) {
-  return (
-    <View style={styles.statItem}>
-      <View style={styles.statCircle}>
-        {icon ? (
-          <Image source={icon} style={styles.statCircleIcon} contentFit="contain" />
-        ) : (
-          <Text
-            style={[styles.statCircleText, compact && styles.statCircleTextCompact]}
-            numberOfLines={2}
-          >
-            {value}
-          </Text>
-        )}
-      </View>
-      <Text style={styles.statLabel} numberOfLines={2}>{label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   page: {
     flex: 1,
@@ -503,41 +390,48 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 
-  // Donut card
+  // ── Donut card with landscape backdrop ────────────────────────────────
   donutCard: {
     backgroundColor: CARD_BG,
-    borderRadius: 18,
+    borderRadius: 22,
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+    marginBottom: 16,
   },
   donutCardContent: {
     paddingHorizontal: 18,
     paddingTop: 18,
-    paddingBottom: 8,
   },
   monthPill: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: PILL_GRAY,
+    borderWidth: 1.2,
+    borderColor: DARK_GREEN,
     borderRadius: 100,
     paddingHorizontal: 14,
     paddingVertical: 6,
     gap: 6,
+    backgroundColor: CARD_BG,
   },
   monthPillText: {
-    fontSize: 14,
-    color: BLACK,
-    fontWeight: '500',
+    fontSize: 11,
+    color: DARK_GREEN,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   monthPillChevron: {
-    fontSize: 12,
-    color: BLACK,
+    fontSize: 10,
+    color: DARK_GREEN,
   },
   chartWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
-    marginBottom: 12,
+    marginTop: 14,
   },
   chartCenter: {
     position: 'absolute',
@@ -545,26 +439,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'transparent',
   },
-  centerSubtitle: {
-    fontSize: 12,
-    color: DARK_GREEN,
-    marginBottom: 2,
-  },
-  centerAmountRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  centerDollar: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: DARK_GREEN,
-    marginTop: 6,
-  },
   centerAmount: {
-    fontSize: 44,
-    fontWeight: '800',
+    fontSize: 30,
+    fontWeight: '600',
     color: DARK_GREEN,
-    letterSpacing: -1,
+    letterSpacing: -0.5,
   },
   donutEmpty: {
     alignItems: 'center',
@@ -583,184 +462,94 @@ const styles = StyleSheet.create({
     color: GRAY_TEXT,
     marginTop: 4,
   },
+  landscape: {
+    width: '100%',
+    height: 90,
+    marginTop: -28,
+  },
 
-  // Name + spender type
-  nameBlock: {
-    marginTop: 18,
-    marginBottom: 14,
+  // ── Info card ─────────────────────────────────────────────────────────
+  infoCard: {
+    backgroundColor: CARD_BG,
+    borderRadius: 22,
+    padding: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   userName: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: BLACK,
   },
+  editDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#f4f5f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editDotText: {
+    fontSize: 10,
+    color: GRAY_TEXT,
+  },
   spenderLine: {
-    fontSize: 13,
-    color: BLACK,
-    marginTop: 2,
+    fontSize: 12,
+    color: GRAY_TEXT,
+    marginTop: 4,
+    marginBottom: 16,
   },
   spenderBold: {
     fontWeight: '700',
-  },
-
-  // Legend
-  legend: {
-    gap: 10,
-    marginBottom: 22,
-  },
-  legendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  legendIcon: {
-    width: 22,
-    height: 22,
-  },
-  legendCat: {
-    flex: 1,
-    fontSize: 14,
-    color: BLACK,
-    fontWeight: '500',
-  },
-  legendPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 100,
-    minWidth: 70,
-    alignItems: 'center',
-  },
-  legendPillText: {
-    fontSize: 12,
-    fontWeight: '600',
     color: BLACK,
   },
-  emptyInline: {
-    fontSize: 13,
-    color: GRAY_TEXT,
-    textAlign: 'center',
-    paddingVertical: 12,
-  },
 
-  // Stat row
-  statRow: {
+  // ── Stat tiles (2x2) ──────────────────────────────────────────────────
+  tileGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 4,
-    marginBottom: 22,
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  tile: {
+    width: '48%',
+    backgroundColor: '#fafafa',
+    borderRadius: 14,
+    padding: 12,
     gap: 8,
   },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
+  tileLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: GRAY_TEXT,
+    letterSpacing: 0.5,
   },
-  statCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: '#e8e8e8',
+  tilePill: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
+    borderRadius: 100,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    gap: 6,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
   },
-  statCircleText: {
+  tileIcon: {
+    width: 18,
+    height: 18,
+  },
+  tileValue: {
     fontSize: 12,
     fontWeight: '600',
     color: BLACK,
-    textAlign: 'center',
-  },
-  statCircleTextCompact: {
-    fontSize: 10,
-  },
-  statCircleIcon: {
-    width: 38,
-    height: 38,
-  },
-  statLabel: {
-    marginTop: 8,
-    fontSize: 10,
-    color: BLACK,
-    textAlign: 'center',
-    lineHeight: 13,
-  },
-
-  // Predictive
-  predictivePillWrap: {
-    alignItems: 'flex-start',
-    marginBottom: 10,
-  },
-  predictivePill: {
-    borderWidth: 1.5,
-    borderColor: DARK_GREEN,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 100,
-    backgroundColor: CARD_BG,
-  },
-  predictivePillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: DARK_GREEN,
-    letterSpacing: 0.5,
-  },
-  predictRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 24,
-  },
-  predictCard: {
-    flex: 1,
-    backgroundColor: CARD_BG,
-    borderRadius: 16,
-    padding: 14,
-    minHeight: 110,
-  },
-  predictTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: BLACK,
-    marginBottom: 8,
-  },
-  predictValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: DARK_GREEN,
-  },
-  predictSub: {
-    fontSize: 11,
-    color: GRAY_TEXT,
-    marginTop: 2,
-  },
-
-  // AI block
-  aiCard: {
-    backgroundColor: CARD_BG,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  aiLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: GRAY_TEXT,
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  loadingText: {
-    fontSize: 13,
-    color: GRAY_TEXT,
-  },
-  summaryText: {
-    fontSize: 14,
-    color: BLACK,
-    lineHeight: 21,
+    flexShrink: 1,
   },
 
   // Picker
