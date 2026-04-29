@@ -22,11 +22,18 @@ import * as TaskManager from 'expo-task-manager';
 // ── Figma assets (local SVGs with CSS vars resolved) ─────────────────────────
 const chevronLeft        = require('../../assets/icons/chevronLeft.svg');
 const chevronRight       = require('../../assets/icons/chevronRight.svg');
-const dollarSignLarge    = require('../../assets/icons/dollarSignLarge.svg');
 const clipboardIcon      = require('../../assets/icons/clipboardIcon.svg');
 const flameIcon          = require('../../assets/icons/flameIcon.svg');
-const heroLandscape      = require('../../assets/icons/heroLandscape.svg');
 const bagIcon            = require('../../assets/icons/bagIcon.svg');
+
+// ── Farm background images (1 = worst, 5 = best) ─────────────────────────────
+const FARM_IMAGES = [
+  require('../../assets/images/1.jpg'),
+  require('../../assets/images/2.jpg'),
+  require('../../assets/images/3.jpg'),
+  require('../../assets/images/4.jpg'),
+  require('../../assets/images/5.jpg'),
+];
 const seeMoreArrow       = require('../../assets/icons/seeMoreArrow.svg');
 const foodIcon           = require('../../assets/icons/foodIcon.svg');
 const budgetMarkerLine   = require('../../assets/icons/budgetMarkerLine.svg');
@@ -113,6 +120,7 @@ export default function HomeScreen() {
   const { token: contextToken, checkInResults, predictions, mergePredictions, predictionsLoaded, pendingLocations, monthlyBudget } = useAuth();
   const token = contextToken ?? paramToken;
   const [trackingActive, setTrackingActive] = useState(false);
+  const [farmAspectRatio, setFarmAspectRatio] = useState(1);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -137,6 +145,21 @@ export default function HomeScreen() {
     return totals;
   }, [checkInResults]);
 
+  // Pick farm background + spending score based on actual spend vs monthly budget
+  const { farmImage, spendingScore } = useMemo(() => {
+    const totalSpent  = Object.values(categoryTotals).reduce((s, v) => s + v, 0);
+    const totalBudget = Object.values(monthlyBudget).reduce((s, v) => s + v, 0);
+
+    if (totalBudget === 0 || totalSpent === 0) return { farmImage: FARM_IMAGES[2], spendingScore: 3 };
+
+    const ratio = totalSpent / totalBudget;
+    if (ratio > 1.2) return { farmImage: FARM_IMAGES[0], spendingScore: 1 };
+    if (ratio > 1.0) return { farmImage: FARM_IMAGES[1], spendingScore: 2 };
+    if (ratio > 0.8) return { farmImage: FARM_IMAGES[2], spendingScore: 3 };
+    if (ratio > 0.5) return { farmImage: FARM_IMAGES[3], spendingScore: 4 };
+    return { farmImage: FARM_IMAGES[4], spendingScore: 5 };
+  }, [categoryTotals, monthlyBudget]);
+
   // Sum medium predicted spend per day
   const predictedTotalsByDate = useMemo(() => {
     const totals: { [date: string]: number } = {};
@@ -146,7 +169,6 @@ export default function HomeScreen() {
     return totals;
   }, [predictions]);
 
-  const totalSaved = 362;
   const streak = 3;
   const monthNameUpper = new Date()
     .toLocaleString('default', { month: 'long' })
@@ -316,25 +338,36 @@ export default function HomeScreen() {
   }, [token, dayOffset, predictionsLoaded]);
 
   return (
+    <View style={styles.screen}>
+      {/* ── Farm background — full-width, natural height, pinned to top ── */}
+      <Image
+        source={farmImage}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, aspectRatio: farmAspectRatio }}
+        contentFit="fill"
+        onLoad={e => {
+          const { width, height } = e.source;
+          if (width && height) setFarmAspectRatio(width / height);
+        }}
+      />
+
     <ScrollView
-      style={styles.container}
+      style={styles.scrollView}
       contentContainerStyle={[styles.content, { paddingTop: top + 20 }]}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── Hero card ── */}
-      <View style={styles.heroCard}>
-        {/* Content row */}
-        <View style={styles.heroContent}>
-          {/* Savings amount */}
-          <View style={styles.savingsGroup}>
-            <View style={styles.savingsAmountRow}>
-              <Image source={dollarSignLarge} style={styles.dollarLarge} contentFit="contain" />
-              <Text style={styles.savedAmount}>{totalSaved}</Text>
-            </View>
-            <Text style={styles.savedLabel}>saved with Spent</Text>
-          </View>
-
-          {/* Check-in button + streak badge */}
+      {/* ── Farm transparent section — shows farm bg, overlays controls ── */}
+      <View style={styles.farmSection}>
+        {/* 5-step progress bar — bottom left, over pig sty */}
+        <View style={styles.progressBarRow}>
+          {[1, 2, 3, 4, 5].map(step => (
+            <View
+              key={step}
+              style={[styles.progressSegment, step <= spendingScore && styles.progressSegmentFilled]}
+            />
+          ))}
+        </View>
+        {/* Check-in + streak — bottom right */}
+        <View style={styles.farmOverlayRight}>
           <View style={styles.checkInWrapper}>
             <TouchableOpacity
               style={styles.checkInButton}
@@ -343,20 +376,12 @@ export default function HomeScreen() {
               <Image source={clipboardIcon} style={styles.clipboardImg} contentFit="contain" />
               <Text style={styles.checkInLabel}>check in</Text>
             </TouchableOpacity>
-
             <View style={styles.streakBadge}>
               <Image source={flameIcon} style={styles.flameImg} contentFit="contain" />
               <Text style={styles.streakCount}>{streak}</Text>
             </View>
           </View>
         </View>
-
-        {/* Landscape illustration */}
-        <Image
-          source={heroLandscape}
-          style={styles.landscapeImg}
-          contentFit="cover"
-        />
       </View>
 
       {/* ── Location status ── */}
@@ -508,6 +533,7 @@ export default function HomeScreen() {
         onClose={() => setCheckInVisible(false)}
       />
     </ScrollView>
+  </View>
   );
 }
 
@@ -522,9 +548,13 @@ const GRAY_TEXT   = '#a5a5a5';
 const BLACK       = '#1e1d19';
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  scrollView: {
+    flex: 1,
+    backgroundColor: 'transparent',
   },
   content: {
     padding: 20,
@@ -595,40 +625,35 @@ const styles = StyleSheet.create({
     color: '#000',
   },
 
-  // ── Hero card ───────────────────────────────────────────────────────────────
-  heroCard: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: MINT,
-  },
-  heroContent: {
+  // ── Farm section (transparent — farm bg shows through) ──────────────────────
+  farmSection: {
+    height: 220,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-end',
-    paddingTop: 50,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    justifyContent: 'space-between',
+    paddingBottom: 16,
+    paddingHorizontal: 16,
   },
-  savingsGroup: {
-    gap: 2,
-  },
-  savingsAmountRow: {
-    flexDirection: 'row',
+  farmOverlayRight: {
     alignItems: 'center',
-    gap: 2,
+    gap: 4,
   },
-  dollarLarge: {
-    width: 24,
-    height: 24,
+  progressBarRow: {
+    flexDirection: 'row',
+    gap: 5,
+    alignItems: 'center',
   },
-  savedAmount: {
-    fontSize: 32,
-    color: DARK_GREEN,
-    fontWeight: '400',
+  progressSegment: {
+    width: 22,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
   },
-  savedLabel: {
-    fontSize: 10,
-    color: DARK_GREEN,
+  progressSegmentFilled: {
+    backgroundColor: LIME_GREEN,
+    borderColor: LIME_GREEN,
   },
   checkInWrapper: {
     alignItems: 'center',
@@ -674,10 +699,6 @@ const styles = StyleSheet.create({
   streakCount: {
     fontSize: 10,
     color: LIME_GREEN,
-  },
-  landscapeImg: {
-    width: '100%',
-    height: 112,
   },
 
   // ── Location status ─────────────────────────────────────────────────────────
