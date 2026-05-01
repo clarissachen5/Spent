@@ -89,14 +89,17 @@ export default function OnboardingScreen() {
   const router   = useRouter();
   const { saveUserProfile, saveMonthlyBudget } = useAuth();
 
-  const [step,         setStep]        = useState(0);
-  const [timerDone,    setTimerDone]   = useState(false);
-  const [pigName,      setPigName]     = useState('');
-  const [userName,     setUserName]    = useState('');
-  const [userAge,      setUserAge]     = useState('');
-  const [annualIncome, setAnnualIncome]= useState('');
-  const [budgets,      setBudgets]     = useState<Record<string, string>>({});
-  const [saving,       setSaving]      = useState(false);
+  const [step,           setStep]          = useState(0);
+  const [timerDone,      setTimerDone]     = useState(false);
+  const [pigName,        setPigName]       = useState('');
+  const [userName,       setUserName]      = useState('');
+  const [userAge,        setUserAge]       = useState('');
+  const [annualIncome,   setAnnualIncome]  = useState('');
+  const [budgets,        setBudgets]       = useState<Record<string, string>>({});
+  const [customCats,     setCustomCats]    = useState<{ key: string; amount: string }[]>([]);
+  const [showCatInput,   setShowCatInput]  = useState(false);
+  const [customCatName,  setCustomCatName] = useState('');
+  const [saving,         setSaving]        = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setTimerDone(true), 5000);
@@ -114,9 +117,13 @@ export default function OnboardingScreen() {
   const handleFinish = async () => {
     setSaving(true);
     try {
+      const allCatKeys = [
+        ...CATEGORIES.map(c => c.key),
+        ...customCats.map(c => c.key),
+      ];
       await saveUserProfile({
         city: '', school: '',
-        categories: CATEGORIES.map(c => c.key),
+        categories: allCatKeys,
         goals: [],
         pigName, userName, userAge, annualIncome,
       });
@@ -124,11 +131,24 @@ export default function OnboardingScreen() {
       CATEGORIES.forEach(c => {
         budget[c.key] = parseFloat(budgets[c.key] || '0') || 0;
       });
+      customCats.forEach(c => {
+        budget[c.key] = parseFloat(c.amount || '0') || 0;
+      });
       await saveMonthlyBudget(budget);
       router.replace({ pathname: '/(tabs)/home', params: { checkIn: Date.now().toString() } });
     } finally {
       setSaving(false);
     }
+  };
+
+  const addCustomCat = () => {
+    const name = customCatName.trim();
+    if (!name) return;
+    const allKeys = [...CATEGORIES.map(c => c.key), ...customCats.map(c => c.key)];
+    if (allKeys.map(k => k.toLowerCase()).includes(name.toLowerCase())) return;
+    setCustomCats(prev => [...prev, { key: name, amount: '' }]);
+    setCustomCatName('');
+    setShowCatInput(false);
   };
 
   // ── Step 0: Welcome ───────────────────────────────────────────────────────────
@@ -279,7 +299,58 @@ export default function OnboardingScreen() {
               />
             </View>
           ))}
+
+          {customCats.map((cat, i) => (
+            <View key={cat.key} style={styles.categoryCard}>
+              <View style={styles.categoryCardHeader}>
+                <ExpoImage
+                  source={require('../../assets/icons/otherIcon.svg')}
+                  style={styles.categoryIconImg}
+                  contentFit="contain"
+                />
+                <Text style={styles.categoryLabel} numberOfLines={1}>{cat.key}</Text>
+              </View>
+              <TextInput
+                style={styles.categoryInput}
+                value={cat.amount}
+                onChangeText={v =>
+                  setCustomCats(prev =>
+                    prev.map((c, j) => j === i ? { ...c, amount: onlyNumbers(v) } : c)
+                  )
+                }
+                placeholder="i.e. $25"
+                placeholderTextColor={GRAY_TEXT}
+                keyboardType="decimal-pad"
+              />
+            </View>
+          ))}
         </View>
+
+        {showCatInput ? (
+          <View style={styles.customCatRow}>
+            <TextInput
+              style={styles.customCatInput}
+              placeholder="Category name..."
+              placeholderTextColor={GRAY_TEXT}
+              value={customCatName}
+              onChangeText={setCustomCatName}
+              onSubmitEditing={addCustomCat}
+              returnKeyType="done"
+              autoFocus
+            />
+            <TouchableOpacity style={styles.customCatAddBtn} onPress={addCustomCat} activeOpacity={0.7}>
+              <Text style={styles.customCatAddBtnText}>Add</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.addCatBtn}
+            onPress={() => setShowCatInput(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.addCatBtnText}>+ Add category (optional)</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
       <BottomButton onPress={handleFinish} disabled={!step3Valid} loading={saving} />
     </KeyboardAvoidingView>
@@ -461,6 +532,50 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     fontSize: 13,
     color: BLACK,
+  },
+
+  addCatBtn: {
+    alignSelf: 'center',
+    marginTop: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: LIGHT_GRAY,
+    borderStyle: 'dashed',
+  },
+  addCatBtnText: {
+    fontSize: 13,
+    color: GRAY_TEXT,
+    fontWeight: '500',
+  },
+  customCatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 4,
+  },
+  customCatInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: LIGHT_GRAY,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: BLACK,
+  },
+  customCatAddBtn: {
+    backgroundColor: '#cdf545',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  customCatAddBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0a542f',
   },
 
   // Bottom button

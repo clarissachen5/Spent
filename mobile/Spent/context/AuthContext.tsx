@@ -18,6 +18,7 @@ export interface UserProfile {
 }
 
 export interface CheckInResult {
+  firestoreId?: string;
   location: string;
   category: string;
   visited: boolean;
@@ -28,6 +29,7 @@ export interface CheckInResult {
 export interface SpendingEstimate {
   date: string;
   event: string;
+  category?: string;
   low:    { amount: number; description: string };
   medium: { amount: number; description: string };
   high:   { amount: number; description: string };
@@ -53,6 +55,8 @@ interface AuthContextType {
   logout: () => void;
   checkInResults: CheckInResult[];
   addCheckInResult: (result: CheckInResult) => void;
+  updateCheckIn: (firestoreId: string, amount: number) => Promise<void>;
+  removeCheckIn: (firestoreId: string) => Promise<void>;
   predictions: SpendingEstimate[];
   mergePredictions: (incoming: SpendingEstimate[]) => void;
   predictionsLoaded: boolean;
@@ -72,6 +76,8 @@ const AuthContext = createContext<AuthContextType>({
   logout: () => {},
   checkInResults: [],
   addCheckInResult: () => {},
+  updateCheckIn: async () => {},
+  removeCheckIn: async () => {},
   predictions: [],
   mergePredictions: () => {},
   predictionsLoaded: false,
@@ -185,11 +191,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const data = d.data();
           if (data.date && data.event) {
             loadedPredictions.push({
-              date:   data.date,
-              event:  data.event,
-              low:    data.low,
-              medium: data.medium,
-              high:   data.high,
+              date:     data.date,
+              event:    data.event,
+              category: data.category,
+              low:      data.low,
+              medium:   data.medium,
+              high:     data.high,
             });
           }
         });
@@ -200,6 +207,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         checkInsSnap.forEach(d => {
           const data = d.data();
           loadedCheckIns.push({
+            firestoreId: d.id,
             location:  data.location,
             category:  data.category,
             visited:   data.visited,
@@ -211,13 +219,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('[Firestore] loaded', loadedCheckIns.length, 'check-ins for user', userId);
 
         const profileDoc = profileSnap.docs[0];
+        const loadedCategories: string[] = profileDoc?.data().categories ?? [];
         if (profileDoc) {
           const d = profileDoc.data();
           setUserProfileState({
-            city:       d.city ?? '',
-            school:     d.school ?? '',
-            categories: d.categories ?? [],
-            goals:      d.goals ?? [],
+            city:         d.city ?? '',
+            school:       d.school ?? '',
+            categories:   loadedCategories,
+            goals:        d.goals ?? [],
+            pigName:      d.pigName,
+            userName:     d.userName,
+            userAge:      d.userAge,
+            annualIncome: d.annualIncome,
           });
         }
         const budgetDoc = budgetSnap.docs.find(d => d.id === budgetDocId);
@@ -281,7 +294,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               const res = await fetch(`${API_BASE_URL}/ollama/analyze`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ events: batch }),
+                body: JSON.stringify({ events: batch, categories: loadedCategories }),
               });
               if (!res.ok) continue;
               const analysis = await res.json();
@@ -301,6 +314,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 await Promise.all(estimates.map(p =>
                   setDoc(userDoc(userId, 'spending_analyses', estimateDocId(p.date, p.event)), {
                     date: p.date, event: p.event,
+                    category: p.category ?? null,
                     low: p.low, medium: p.medium, high: p.high,
                     created_at: savedAt,
                   })
@@ -338,22 +352,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [userId, token]);
 
   const addCheckInResult = (result: CheckInResult) => {
-    setCheckInResults(prev => [...prev, result]);
     (async () => {
       const uid = userId ?? await AsyncStorage.getItem(USER_ID_KEY);
       if (!uid) return;
       try {
-        await addDoc(userCol(uid, 'check_ins'), {
+        const ref = await addDoc(userCol(uid, 'check_ins'), {
           location:  result.location,
           category:  result.category,
           visited:   result.visited,
           amount:    result.amount ?? null,
           timestamp: result.timestamp.toISOString(),
         });
+        setCheckInResults(prev => [...prev, { ...result, firestoreId: ref.id }]);
       } catch (e) {
         console.warn('[Firestore] check-in save failed:', e);
+        setCheckInResults(prev => [...prev, result]);
       }
     })();
+  };
+
+  const updateCheckIn = async (firestoreId: string, amount: number) => {
+    const uid = userId ?? await AsyncStorage.getItem(USER_ID_KEY);
+    if (!uid) return;
+    await updateDoc(userDoc(uid, 'check_ins', firestoreId), { amount });
+    setCheckInResults(prev =>
+      prev.map(r => r.firestoreId === firestoreId ? { ...r, amount } : r)
+    );
+  };
+
+  const removeCheckIn = async (firestoreId: string) => {
+    const uid = userId ?? await AsyncStorage.getItem(USER_ID_KEY);
+    if (!uid) return;
+    await deleteDoc(userDoc(uid, 'check_ins', firestoreId));
+    setCheckInResults(prev => prev.filter(r => r.firestoreId !== firestoreId));
   };
 
   const saveUserProfile = async (profile: UserProfile) => {
@@ -409,7 +440,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{
       token, userId, setToken, logout,
-      checkInResults, addCheckInResult,
+      checkInResults, addCheckInResult, updateCheckIn, removeCheckIn,
       predictions, mergePredictions, predictionsLoaded,
       userProfile, profileLoaded, saveUserProfile,
       pendingLocations, markLocationShown,

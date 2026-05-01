@@ -109,7 +109,8 @@ interface Location {
   address:        string;
   neighborhood:   string;
   icon:           any;
-  accentColor:    string;
+  accentColor:    string; // 20% tint — card background
+  color:          string; // full category color — bar, deny dot, stat tiles
   items:          LocationItem[];
   detectedLocId?: string; // set when this card was created from a real tracked visit
 }
@@ -118,7 +119,7 @@ const LOCATIONS: Location[] = [
   {
     id: 1, name: 'Starbucks', category: 'Coffee',
     address: '100 Newbury St, Boston, MA', neighborhood: 'Coolidge Corner, MA',
-    icon: coffeeIcon, accentColor: PINK_BG,
+    icon: coffeeIcon, accentColor: '#fff0f8', color: '#ffb5db',
     items: [
       { icon: smallCoffeeIcon,  label: 'small coffee',  price: 3  },
       { icon: mediumCoffeeIcon, label: 'medium coffee', price: 6  },
@@ -128,7 +129,7 @@ const LOCATIONS: Location[] = [
   {
     id: 2, name: 'Brookline Booksmith', category: 'Shopping',
     address: '279 Harvard St, Brookline, MA', neighborhood: 'Coolidge Corner, MA',
-    icon: shoppingIcon, accentColor: '#F0FBF5',
+    icon: shoppingIcon, accentColor: '#fff6d6', color: '#fed130',
     items: [
       { icon: shoppingTier1Icon, label: 'bookmark',  price: 3  },
       { icon: shoppingTier2Icon, label: 'paperback', price: 15 },
@@ -138,7 +139,7 @@ const LOCATIONS: Location[] = [
   {
     id: 3, name: 'Barcelona Wine Bar', category: 'Food',
     address: '1700 Washington St, Boston, MA', neighborhood: 'South End, MA',
-    icon: foodIcon, accentColor: '#F5F0FF',
+    icon: foodIcon, accentColor: '#eefbfd', color: '#a8eaf6',
     items: [
       { icon: foodTier1Icon, label: 'wine glass', price: 12 },
       { icon: foodTier2Icon, label: 'appetizer',  price: 16 },
@@ -148,7 +149,7 @@ const LOCATIONS: Location[] = [
   {
     id: 4, name: 'CVS Pharmacy', category: 'Shopping',
     address: '36 JFK St, Cambridge, MA', neighborhood: 'Harvard Square, MA',
-    icon: shoppingIcon, accentColor: '#FFFBF0',
+    icon: shoppingIcon, accentColor: '#fff6d6', color: '#fed130',
     items: [
       { icon: shoppingTier1Icon, label: 'snacks',     price: 5  },
       { icon: shoppingTier2Icon, label: 'toiletries', price: 12 },
@@ -439,22 +440,22 @@ function MissedExpensesCard({ onDone, onLog }: MissedExpensesCardProps) {
 const BUDGET_MAX = 1000; // will be replaced with user income later
 
 const BUDGET_CATEGORIES = [
-  { name: 'Food',           icon: foodIcon,           thumbIcon: foodTier2Icon,          color: '#A8EAF6', lightColor: '#E8F9FD' },
-  { name: 'Coffee',         icon: coffeeIcon,         thumbIcon: coffeeTier2Icon,         color: '#FFB5DB', lightColor: '#FFF0F8' },
-  { name: 'Shopping',       icon: bagIcon,            thumbIcon: shoppingTier2Icon,       color: '#FED130', lightColor: '#FFF6D6' },
-  { name: 'Entertainment',  icon: entertainmentIcon,  thumbIcon: entertainmentTier2Icon,  color: '#DEABFF', lightColor: '#F8EEFF' },
-  { name: 'Transportation', icon: transportationIcon, thumbIcon: transportationTier2Icon, color: '#FFCBA4', lightColor: '#FFF5EE' },
-  { name: 'Other',          icon: otherIcon,          thumbIcon: otherTier2Icon,          color: '#F4A0A0', lightColor: '#FEF0F0' },
+  { name: 'Eating Out',     icon: foodIcon,           color: '#A8EAF6', lightColor: '#EEFBFD', textColor: '#0a2627' },
+  { name: 'Groceries',      icon: bagIcon,            color: '#2FD296', lightColor: '#EBF9F4', textColor: '#0a542f' },
+  { name: 'Coffee',         icon: coffeeIcon,         color: '#FFB5DB', lightColor: '#FFF0F8', textColor: '#4f090b' },
+  { name: 'Transportation', icon: transportationIcon, color: '#FFA454', lightColor: '#FFEDDD', textColor: '#4f090b' },
+  { name: 'Entertainment',  icon: entertainmentIcon,  color: '#DEABFF', lightColor: '#F8EEFF', textColor: '#400981' },
+  { name: 'Shopping',       icon: shoppingIcon,       color: '#FED130', lightColor: '#FFF6D6', textColor: '#4f090b' },
 ];
 
 // ── Budget Slider ─────────────────────────────────────────────────────────────
 const BUDGET_THUMB_D = 30;
 
 function BudgetSlider({
-  value, maxValue, accentColor, lightColor, thumbIcon, onValueChange, onDragStart, onDragEnd,
+  value, maxValue, accentColor, lightColor, icon, onValueChange, onDragStart, onDragEnd,
 }: {
   value: number; maxValue: number; accentColor: string; lightColor: string;
-  thumbIcon: any; onValueChange: (v: number) => void;
+  icon: any; onValueChange: (v: number) => void;
   onDragStart?: () => void; onDragEnd?: () => void;
 }) {
   const [trackWidth, setTrackWidth] = useState(0);
@@ -502,7 +503,7 @@ function BudgetSlider({
       </View>
       {trackWidth > 0 && (
         <View style={[bsStyles.thumb, { left: thumbL }]}>
-          <Image source={thumbIcon} style={bsStyles.thumbIcon} contentFit="contain" />
+          <Image source={icon} style={bsStyles.thumbIcon} contentFit="contain" />
         </View>
       )}
     </View>
@@ -527,11 +528,42 @@ const bsStyles = StyleSheet.create({
 
 
 function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
-  const { saveMonthlyBudget, monthlyBudget } = useAuth();
+  const { saveMonthlyBudget, monthlyBudget, userProfile } = useAuth();
+
+  // Merge preset categories with any custom ones from the user's profile
+  const allCategories = useMemo(() => {
+    const presetNames = new Set(BUDGET_CATEGORIES.map(c => c.name));
+    const custom = (userProfile?.categories ?? [])
+      .filter(name => !presetNames.has(name))
+      .map(name => ({
+        name,
+        icon: otherIcon,
+        color: '#FF8270',
+        lightColor: '#FFE6E2',
+        textColor: '#4f090b',
+      }));
+    return [...BUDGET_CATEGORIES, ...custom];
+  }, [userProfile?.categories]);
+
   const [amounts, setAmounts] = useState<Record<string, number>>(
-    Object.fromEntries(BUDGET_CATEGORIES.map(c => [c.name, Math.min(monthlyBudget[c.name] ?? 0, BUDGET_MAX)])),
+    Object.fromEntries(allCategories.map(c => [c.name, Math.min(monthlyBudget[c.name] ?? 0, BUDGET_MAX)])),
   );
   const [scrollEnabled, setScrollEnabled] = useState(true);
+
+  // Keep amounts in sync when custom categories are added after mount
+  const prevCats = useRef<string[]>([]);
+  useMemo(() => {
+    const names = allCategories.map(c => c.name);
+    const added = names.filter(n => !prevCats.current.includes(n));
+    if (added.length > 0) {
+      setAmounts(prev => {
+        const next = { ...prev };
+        added.forEach(n => { next[n] = Math.min(monthlyBudget[n] ?? 0, BUDGET_MAX); });
+        return next;
+      });
+    }
+    prevCats.current = names;
+  }, [allCategories]);
 
   const total = Object.values(amounts).reduce((s, v) => s + v, 0);
 
@@ -546,10 +578,12 @@ function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
 
   return (
     <View style={budgetStyles.card}>
-      <Text style={budgetStyles.title}>How much do you think{'\n'}you will spend this month?</Text>
-      <Text style={budgetStyles.totalLabel}>
-        Total estimate: <Text style={budgetStyles.totalAmt}>${total}</Text>
-      </Text>
+      <View style={budgetStyles.titleRow}>
+        <Text style={budgetStyles.title}>HOW MUCH WOULD YOU PREFER TO SPEND THIS MONTH?</Text>
+        <View style={budgetStyles.totalPill}>
+          <Text style={budgetStyles.totalAmt}>${total}</Text>
+        </View>
+      </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -557,21 +591,20 @@ function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
         contentContainerStyle={{ gap: 10, paddingBottom: 8 }}
         scrollEnabled={scrollEnabled}
       >
-        {BUDGET_CATEGORIES.map(cat => (
-          <View key={cat.name} style={[budgetStyles.categoryRow, { borderColor: LIGHT_GRAY }]}>
+        {allCategories.map(cat => (
+          <View key={cat.name} style={budgetStyles.categoryRow}>
             <View style={budgetStyles.categoryHeader}>
-              <View style={[budgetStyles.iconWrap, { backgroundColor: cat.lightColor }]}>
-                <Image source={cat.icon} style={budgetStyles.catIcon} contentFit="contain" />
+              <Text style={[budgetStyles.categoryName, { color: cat.textColor }]}>{cat.name}</Text>
+              <View style={[budgetStyles.amountPill, { backgroundColor: cat.lightColor }]}>
+                <Text style={[budgetStyles.categoryAmt, { color: cat.textColor }]}>${amounts[cat.name]}</Text>
               </View>
-              <Text style={budgetStyles.categoryName}>{cat.name}</Text>
-              <Text style={[budgetStyles.categoryAmt, { color: cat.color }]}>${amounts[cat.name]}</Text>
             </View>
             <BudgetSlider
               value={amounts[cat.name]}
               maxValue={BUDGET_MAX}
               accentColor={cat.color}
               lightColor={cat.lightColor}
-              thumbIcon={cat.thumbIcon}
+              icon={cat.icon}
               onValueChange={v => handleValueChange(cat.name, v)}
               onDragStart={() => setScrollEnabled(false)}
               onDragEnd={() => setScrollEnabled(true)}
@@ -590,11 +623,11 @@ function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
 const budgetStyles = StyleSheet.create({
   card: {
     width: CARD_WIDTH,
-    height: CARD_HEIGHT,
+    maxHeight: CARD_HEIGHT,
     borderRadius: CARD_RADIUS,
     backgroundColor: '#fff',
-    paddingHorizontal: 22,
-    paddingTop: 22,
+    paddingHorizontal: 20,
+    paddingTop: 20,
     paddingBottom: 18,
     shadowColor: '#000',
     shadowOpacity: 0.18,
@@ -604,64 +637,61 @@ const budgetStyles = StyleSheet.create({
     alignItems: 'stretch',
     gap: 10,
   },
-  title: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: DARK_GREEN,
-    lineHeight: 23,
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  totalLabel: {
-    fontSize: 12,
-    color: GRAY_TEXT,
-    fontWeight: '500',
+  title: {
+    flex: 1,
+    fontSize: 10,
+    fontWeight: '400',
+    color: '#000',
+    letterSpacing: 0.5,
+  },
+  totalPill: {
+    backgroundColor: '#eef9d6',
+    borderRadius: 100,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
   totalAmt: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: DARK_GREEN,
   },
   categoryRow: {
-    gap: 6,
+    gap: 5,
     borderWidth: 1,
-    borderStyle: 'dashed',
+    borderColor: LIGHT_GRAY,
     borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    padding: 10,
   },
   categoryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  iconWrap: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  catIcon: {
-    width: 15,
-    height: 15,
+    justifyContent: 'space-between',
   },
   categoryName: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1e1d19',
+    fontSize: 10,
+    fontWeight: '400',
+  },
+  amountPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 100,
   },
   categoryAmt: {
-    fontSize: 13,
-    fontWeight: '700',
-    minWidth: 40,
-    textAlign: 'right',
+    fontSize: 10,
+    fontWeight: '400',
+    letterSpacing: 0.5,
   },
   saveBtn: {
     backgroundColor: DARK_GREEN,
     borderRadius: 14,
     paddingVertical: 13,
     alignItems: 'center',
-    marginTop: 4,
   },
   saveBtnTxt: {
     color: LIME_GREEN,
@@ -682,12 +712,28 @@ const CATEGORY_ITEMS: Record<string, LocationItem[]> = {
   Other:          [{ icon: otherTier1Icon, label: 'small', price: 5 }, { icon: otherTier2Icon, label: 'medium', price: 15 }, { icon: otherTier3Icon, label: 'large', price: 30 }],
 };
 const CATEGORY_ICON: Record<string, any> = {
-  Coffee: coffeeIcon, Food: foodIcon, Shopping: shoppingIcon,
+  Coffee: coffeeIcon, 'Eating Out': foodIcon, Groceries: bagIcon, Shopping: shoppingIcon,
   Entertainment: entertainmentIcon, Transportation: transportationIcon, Other: otherIcon,
 };
 const CATEGORY_COLOR: Record<string, string> = {
-  Coffee: PINK_BG, Food: '#F5F0FF', Shopping: '#F0FBF5',
-  Entertainment: '#F0F5FF', Transportation: '#FFFBF0', Other: '#FFFBF0',
+  'Eating Out':    '#eefbfd',
+  Food:            '#eefbfd',
+  Groceries:       'rgba(205,245,69,0.3)',
+  Coffee:          '#fff0f8',
+  Transportation:  '#ffeddd',
+  Entertainment:   '#f8eeff',
+  Shopping:        '#fff6d6',
+  Other:           '#ffe6e2',
+};
+const CATEGORY_FULL_COLOR: Record<string, string> = {
+  'Eating Out':    '#a8eaf6',
+  Food:            '#a8eaf6',
+  Groceries:       '#cdf545',
+  Coffee:          '#ffb5db',
+  Transportation:  '#ffa454',
+  Entertainment:   '#deabff',
+  Shopping:        '#fed130',
+  Other:           '#ff8270',
 };
 
 function detectedToLocation(d: DetectedLocation): Location {
@@ -700,6 +746,7 @@ function detectedToLocation(d: DetectedLocation): Location {
     neighborhood:  d.address,
     icon:          CATEGORY_ICON[cat] ?? shoppingIcon,
     accentColor:   CATEGORY_COLOR[cat] ?? PINK_BG,
+    color:         CATEGORY_FULL_COLOR[cat] ?? PINK_BAR,
     items:         CATEGORY_ITEMS[cat] ?? CATEGORY_ITEMS.Other,
     detectedLocId: d.id,
   };
@@ -955,7 +1002,7 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
             <Text style={styles.nameTxt}>{location.name}</Text>
           </View>
           <View style={styles.timeBlock}>
-            <View style={styles.pinkBar} />
+            <View style={[styles.pinkBar, { backgroundColor: location.color }]} />
             <View>
               <Text style={styles.timeTxt}>Today @{checkInTime}</Text>
               <Text style={styles.neighborhoodTxt}>{location.neighborhood}</Text>
@@ -1023,7 +1070,7 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
                     return (
                       <View key={i} style={{ position: 'absolute', left: cx - 10, bottom: TICK_TALL + RULER_BELOW + 8, alignItems: 'center', width: 20 }}>
                         {item.isNothing ? (
-                          <View style={styles.denyCircle}>
+                          <View style={[styles.denyCircle, { backgroundColor: location.color }]}>
                             <Image source={denyIcon} style={styles.denyIcon} contentFit="contain" />
                           </View>
                         ) : (
@@ -1059,22 +1106,26 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
           <View style={styles.statsBox}>
             <Text style={styles.statsTitle}>YOUR PATTERN HERE</Text>
             <View style={styles.statsTiles}>
-              <View style={styles.statTile}>
+              <View style={[styles.statTile, { backgroundColor: location.accentColor }]}>
                 <View style={styles.statValRow}>
-                  <Image source={moneySmallIcon} style={styles.statIcon} contentFit="contain" />
+                  <View style={[styles.statDot, { backgroundColor: location.color }]}>
+                    <Text style={styles.statDotSign}>$</Text>
+                  </View>
                   <Text style={styles.statAmt}>{stats.avg.toFixed(2)}</Text>
                 </View>
                 <Text style={styles.statLabel}>avg spend</Text>
               </View>
-              <View style={styles.statTile}>
+              <View style={[styles.statTile, { backgroundColor: location.accentColor }]}>
                 <View style={styles.statValRow}>
                   <Text style={styles.statCount}>×{stats.visits}</Text>
                 </View>
                 <Text style={styles.statLabel}>this month</Text>
               </View>
-              <View style={styles.statTile}>
+              <View style={[styles.statTile, { backgroundColor: location.accentColor }]}>
                 <View style={styles.statValRow}>
-                  <Image source={moneySmallIcon} style={styles.statIcon} contentFit="contain" />
+                  <View style={[styles.statDot, { backgroundColor: location.color }]}>
+                    <Text style={styles.statDotSign}>$</Text>
+                  </View>
                   <Text style={styles.statAmt}>{stats.total}</Text>
                 </View>
                 <Text style={styles.statLabel}>this month</Text>
@@ -1181,11 +1232,10 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
           <View style={[styles.stackContainer, { height: CARD_HEIGHT + collapsed.length * HEADER_H }]}>
             {[...collapsed].reverse().map((loc, i) => {
               const distFromFront = collapsed.length - 1 - i;
-              const bgColor  = distFromFront === 2 ? PINK_BG  : distFromFront === 1 ? '#FFFFFF' : '#EBEBEB';
               return (
                 <View
                   key={loc.id}
-                  style={[styles.backCard, { top: i * HEADER_H, backgroundColor: bgColor, zIndex: 9 - distFromFront }]}
+                  style={[styles.backCard, { top: i * HEADER_H, backgroundColor: loc.accentColor, zIndex: 9 - distFromFront }]}
                 >
                   <View style={styles.peekRow}>
                     <Image source={loc.icon} style={styles.peekIcon} contentFit="contain" />
@@ -1386,10 +1436,15 @@ const styles = StyleSheet.create({
     borderRadius: 10, padding: 8, gap: 4,
     justifyContent: 'flex-end',
   },
-  statValRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  statIcon:  { width: 13, height: 13 },
+  statValRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  statDot: {
+    width: 20, height: 20, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  statDotSign: { fontSize: 14, fontWeight: '600', color: PRICE_COLOR, lineHeight: 20 },
+  statIcon:  { width: 14, height: 14 },
   statAmt:   { fontSize: 14, fontWeight: '600', color: PRICE_COLOR },
-  statCount: { fontSize: 14, fontWeight: '600', color: DARK_RED },
+  statCount: { fontSize: 14, fontWeight: '600', color: PRICE_COLOR },
   statLabel: { fontSize: 9, color: DARK_RED },
 
   // ── LOG button ──
