@@ -14,6 +14,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import CheckInModal from '../../components/CheckInModal';
 import PredictiveGraphRow from '../../components/PredictiveGraphRow';
+import PigAnimation from '../../components/PigAnimation';
 import { API_BASE_URL } from '../../constants/config';
 import { getFirestore, setDoc, doc } from 'firebase/firestore';
 import { app } from '../../src/config/firebase';
@@ -159,6 +160,27 @@ export default function HomeScreen() {
     if (ratio > 0.5) return { farmImage: FARM_IMAGES[3], spendingScore: 4 };
     return { farmImage: FARM_IMAGES[4], spendingScore: 5 };
   }, [categoryTotals, monthlyBudget]);
+
+  // Pig accessories — show when user has checked in to that category this month
+  const pigAccessories = useMemo(() => {
+    const now = new Date();
+    const map: Record<string, string> = {
+      Coffee:         'coffee(on/off)',
+      Food:           'necklace(on/off)',
+      Shopping:       'glasses(on/off)',
+      Entertainment:  'crown(on/off)',
+      Transportation: 'wings(on/off)',
+    };
+    const acc: Record<string, boolean> = {};
+    Object.entries(map).forEach(([cat, input]) => {
+      acc[input] = checkInResults.some(r => {
+        if (!r.visited || r.category !== cat) return false;
+        const d = r.timestamp instanceof Date ? r.timestamp : new Date(r.timestamp);
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      });
+    });
+    return acc;
+  }, [checkInResults]);
 
   // Sum medium predicted spend per day
   const predictedTotalsByDate = useMemo(() => {
@@ -365,6 +387,10 @@ export default function HomeScreen() {
               style={[styles.progressSegment, step <= spendingScore && styles.progressSegmentFilled]}
             />
           ))}
+        </View>
+        {/* Animated pig — absolutely centered */}
+        <View style={styles.pigContainer}>
+          <PigAnimation accessories={pigAccessories} style={styles.pigAnimation} />
         </View>
         {/* Check-in + streak — bottom right */}
         <View style={styles.farmOverlayRight}>
@@ -633,6 +659,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: 16,
     paddingHorizontal: 16,
+  },
+  pigContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    pointerEvents: 'none',
+  },
+  pigAnimation: {
+    width: 160,
+    height: 160,
   },
   farmOverlayRight: {
     alignItems: 'center',
