@@ -396,12 +396,21 @@ export default function CalendarScreen() {
     ? new Date(selectedDate + 'T12:00:00')
     : null;
 
+  // ── Check-in dollar totals by date ──────────────────────────────────────
+  const checkInTotalsByDate: { [date: string]: number } = {};
+  checkInResults.forEach(r => {
+    if (!r.visited) return;
+    const d = r.timestamp instanceof Date ? r.timestamp : new Date(r.timestamp);
+    const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    checkInTotalsByDate[ds] = (checkInTotalsByDate[ds] ?? 0) + (r.amount ?? 0);
+  });
+
   // ── Normalization caps across the whole month ────────────────────────────
-  let monthMaxEvents   = 1;
+  let monthMaxCheckIn  = 1;
   let monthMaxSpending = 1;
   for (let d = 1; d <= daysInMonth; d++) {
     const ds = toDateStr(year, month, d);
-    monthMaxEvents   = Math.max(monthMaxEvents,   (eventsByDate[ds]?.length ?? 0));
+    monthMaxCheckIn  = Math.max(monthMaxCheckIn,  checkInTotalsByDate[ds] ?? 0);
     monthMaxSpending = Math.max(monthMaxSpending, predictedTotalsByDate[ds] ?? 0);
   }
 
@@ -466,7 +475,7 @@ export default function CalendarScreen() {
 
           {/* Weekly graph rows */}
           {graphRowWidth > 0 && rows.map((row, ri) => {
-            const eventsArr   = row.map(d => d ? (eventsByDate[toDateStr(year, month, d)]?.length ?? 0) : 0);
+            const eventsArr   = row.map(d => d ? (checkInTotalsByDate[toDateStr(year, month, d)] ?? 0) : 0);
             const spendingArr = row.map(d => d ? (predictedTotalsByDate[toDateStr(year, month, d)] ?? 0) : 0);
             const blanks      = row.map(d => d == null);
 
@@ -512,7 +521,7 @@ export default function CalendarScreen() {
                   height={56}
                   events={eventsArr}
                   spending={spendingArr}
-                  maxEvents={monthMaxEvents}
+                  maxEvents={monthMaxCheckIn}
                   maxSpending={monthMaxSpending}
                   blanks={blanks}
                   dayNumbers={row}
