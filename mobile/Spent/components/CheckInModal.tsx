@@ -439,22 +439,22 @@ function MissedExpensesCard({ onDone, onLog }: MissedExpensesCardProps) {
 const BUDGET_MAX = 1000; // will be replaced with user income later
 
 const BUDGET_CATEGORIES = [
-  { name: 'Eating Out',     icon: foodIcon,           thumbIcon: foodTier2Icon,           color: '#A8EAF6', lightColor: '#E8F9FD' },
-  { name: 'Groceries',      icon: bagIcon,            thumbIcon: shoppingTier2Icon,       color: '#A8D8A8', lightColor: '#E2F1D4' },
-  { name: 'Coffee',         icon: coffeeIcon,         thumbIcon: coffeeTier2Icon,          color: '#FFB5DB', lightColor: '#FFF0F8' },
-  { name: 'Transportation', icon: transportationIcon, thumbIcon: transportationTier2Icon,  color: '#FFCBA4', lightColor: '#FFF5EE' },
-  { name: 'Entertainment',  icon: entertainmentIcon,  thumbIcon: entertainmentTier2Icon,   color: '#DEABFF', lightColor: '#F8EEFF' },
-  { name: 'Shopping',       icon: shoppingIcon,       thumbIcon: shoppingTier2Icon,        color: '#FED130', lightColor: '#FFF6D6' },
+  { name: 'Eating Out',     icon: foodIcon,           color: '#A8EAF6', lightColor: '#EEFBFD', textColor: '#0a2627' },
+  { name: 'Groceries',      icon: bagIcon,            color: '#2FD296', lightColor: '#EBF9F4', textColor: '#0a542f' },
+  { name: 'Coffee',         icon: coffeeIcon,         color: '#FFB5DB', lightColor: '#FFF0F8', textColor: '#4f090b' },
+  { name: 'Transportation', icon: transportationIcon, color: '#FFA454', lightColor: '#FFEDDD', textColor: '#4f090b' },
+  { name: 'Entertainment',  icon: entertainmentIcon,  color: '#DEABFF', lightColor: '#F8EEFF', textColor: '#400981' },
+  { name: 'Shopping',       icon: shoppingIcon,       color: '#FED130', lightColor: '#FFF6D6', textColor: '#4f090b' },
 ];
 
 // ── Budget Slider ─────────────────────────────────────────────────────────────
 const BUDGET_THUMB_D = 30;
 
 function BudgetSlider({
-  value, maxValue, accentColor, lightColor, thumbIcon, onValueChange, onDragStart, onDragEnd,
+  value, maxValue, accentColor, lightColor, icon, onValueChange, onDragStart, onDragEnd,
 }: {
   value: number; maxValue: number; accentColor: string; lightColor: string;
-  thumbIcon: any; onValueChange: (v: number) => void;
+  icon: any; onValueChange: (v: number) => void;
   onDragStart?: () => void; onDragEnd?: () => void;
 }) {
   const [trackWidth, setTrackWidth] = useState(0);
@@ -502,7 +502,7 @@ function BudgetSlider({
       </View>
       {trackWidth > 0 && (
         <View style={[bsStyles.thumb, { left: thumbL }]}>
-          <Image source={thumbIcon} style={bsStyles.thumbIcon} contentFit="contain" />
+          <Image source={icon} style={bsStyles.thumbIcon} contentFit="contain" />
         </View>
       )}
     </View>
@@ -537,9 +537,9 @@ function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
       .map(name => ({
         name,
         icon: otherIcon,
-        thumbIcon: otherIcon,
-        color: '#F4A0A0',
-        lightColor: '#FDE0E0',
+        color: '#FF8270',
+        lightColor: '#FFE6E2',
+        textColor: '#4f090b',
       }));
     return [...BUDGET_CATEGORIES, ...custom];
   }, [userProfile?.categories]);
@@ -577,10 +577,12 @@ function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
 
   return (
     <View style={budgetStyles.card}>
-      <Text style={budgetStyles.title}>How much do you think{'\n'}you will spend this month?</Text>
-      <Text style={budgetStyles.totalLabel}>
-        Total estimate: <Text style={budgetStyles.totalAmt}>${total}</Text>
-      </Text>
+      <View style={budgetStyles.titleRow}>
+        <Text style={budgetStyles.title}>HOW MUCH WOULD YOU PREFER TO SPEND THIS MONTH?</Text>
+        <View style={budgetStyles.totalPill}>
+          <Text style={budgetStyles.totalAmt}>${total}</Text>
+        </View>
+      </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -589,17 +591,19 @@ function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
         scrollEnabled={scrollEnabled}
       >
         {allCategories.map(cat => (
-          <View key={cat.name} style={[budgetStyles.categoryRow, { borderColor: LIGHT_GRAY }]}>
+          <View key={cat.name} style={budgetStyles.categoryRow}>
             <View style={budgetStyles.categoryHeader}>
-              <Text style={budgetStyles.categoryName}>{cat.name}</Text>
-              <Text style={[budgetStyles.categoryAmt, { color: cat.color }]}>${amounts[cat.name]}</Text>
+              <Text style={[budgetStyles.categoryName, { color: cat.textColor }]}>{cat.name}</Text>
+              <View style={[budgetStyles.amountPill, { backgroundColor: cat.lightColor }]}>
+                <Text style={[budgetStyles.categoryAmt, { color: cat.textColor }]}>${amounts[cat.name]}</Text>
+              </View>
             </View>
             <BudgetSlider
               value={amounts[cat.name]}
               maxValue={BUDGET_MAX}
               accentColor={cat.color}
               lightColor={cat.lightColor}
-              thumbIcon={cat.thumbIcon}
+              icon={cat.icon}
               onValueChange={v => handleValueChange(cat.name, v)}
               onDragStart={() => setScrollEnabled(false)}
               onDragEnd={() => setScrollEnabled(true)}
@@ -618,11 +622,11 @@ function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
 const budgetStyles = StyleSheet.create({
   card: {
     width: CARD_WIDTH,
-    height: CARD_HEIGHT,
+    maxHeight: CARD_HEIGHT,
     borderRadius: CARD_RADIUS,
     backgroundColor: '#fff',
-    paddingHorizontal: 22,
-    paddingTop: 22,
+    paddingHorizontal: 20,
+    paddingTop: 20,
     paddingBottom: 18,
     shadowColor: '#000',
     shadowOpacity: 0.18,
@@ -632,64 +636,61 @@ const budgetStyles = StyleSheet.create({
     alignItems: 'stretch',
     gap: 10,
   },
-  title: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: DARK_GREEN,
-    lineHeight: 23,
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  totalLabel: {
-    fontSize: 12,
-    color: GRAY_TEXT,
-    fontWeight: '500',
+  title: {
+    flex: 1,
+    fontSize: 10,
+    fontWeight: '400',
+    color: '#000',
+    letterSpacing: 0.5,
+  },
+  totalPill: {
+    backgroundColor: '#eef9d6',
+    borderRadius: 100,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
   totalAmt: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: DARK_GREEN,
   },
   categoryRow: {
-    gap: 6,
+    gap: 5,
     borderWidth: 1,
-    borderStyle: 'dashed',
+    borderColor: LIGHT_GRAY,
     borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    padding: 10,
   },
   categoryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  iconWrap: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  catIcon: {
-    width: 15,
-    height: 15,
+    justifyContent: 'space-between',
   },
   categoryName: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1e1d19',
+    fontSize: 10,
+    fontWeight: '400',
+  },
+  amountPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 100,
   },
   categoryAmt: {
-    fontSize: 13,
-    fontWeight: '700',
-    minWidth: 40,
-    textAlign: 'right',
+    fontSize: 10,
+    fontWeight: '400',
+    letterSpacing: 0.5,
   },
   saveBtn: {
     backgroundColor: DARK_GREEN,
     borderRadius: 14,
     paddingVertical: 13,
     alignItems: 'center',
-    marginTop: 4,
   },
   saveBtnTxt: {
     color: LIME_GREEN,
