@@ -417,6 +417,30 @@ export default function HomeScreen() {
         }}
       />
 
+      {/* ── Pig name — fixed top center ── */}
+      {userProfile?.pigName ? (
+        <View style={{ position: 'absolute', top: top + 16, left: 0, right: 0, alignItems: 'center', zIndex: 10 }}>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: DARK_GREEN }}>{userProfile.pigName}</Text>
+        </View>
+      ) : null}
+
+      {/* ── Check-in + streak — fixed top right ── */}
+      <View style={[styles.farmOverlayRight, { position: 'absolute', top: top + 12, left: 20, zIndex: 10 }]}>
+        <View style={styles.checkInWrapper}>
+          <TouchableOpacity
+            style={styles.checkInButton}
+            onPress={() => setCheckInVisible(true)}
+          >
+            <Image source={clipboardIcon} style={styles.clipboardImg} contentFit="contain" />
+            <Text style={styles.checkInLabel}>check in</Text>
+          </TouchableOpacity>
+          <View style={styles.streakBadge}>
+            <Image source={flameIcon} style={styles.flameImg} contentFit="contain" />
+            <Text style={styles.streakCount}>{streak}</Text>
+          </View>
+        </View>
+      </View>
+
     <ScrollView
       style={styles.scrollView}
       contentContainerStyle={[styles.content, { paddingTop: top + 20 }]}
@@ -436,22 +460,6 @@ export default function HomeScreen() {
         {/* Animated pig — absolutely centered */}
         <View style={styles.pigContainer}>
           <PigAnimation accessories={pigAccessories} style={styles.pigAnimation} />
-        </View>
-        {/* Check-in + streak — bottom right */}
-        <View style={styles.farmOverlayRight}>
-          <View style={styles.checkInWrapper}>
-            <TouchableOpacity
-              style={styles.checkInButton}
-              onPress={() => setCheckInVisible(true)}
-            >
-              <Image source={clipboardIcon} style={styles.clipboardImg} contentFit="contain" />
-              <Text style={styles.checkInLabel}>check in</Text>
-            </TouchableOpacity>
-            <View style={styles.streakBadge}>
-              <Image source={flameIcon} style={styles.flameImg} contentFit="contain" />
-              <Text style={styles.streakCount}>{streak}</Text>
-            </View>
-          </View>
         </View>
       </View>
 
