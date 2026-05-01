@@ -11,11 +11,8 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.clchen5.spent",
-      "backgroundModes": [
-        "fetch",
-        "location"
-      ],
       "infoPlist": {
+        "UIBackgroundModes": ["location"],
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
@@ -70,7 +67,8 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
