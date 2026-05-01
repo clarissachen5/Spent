@@ -50,6 +50,7 @@ export default function PigAnimation({ accessories = {}, style }: PigAnimationPr
       stateMachines: 'Blank Script 1',
       onLoad: function() {
         r.resizeDrawingSurfaceToCanvas();
+        r.play('idle bounce');
         try {
           var inputs = r.stateMachineInputs('Blank Script 1');
           if (inputs) {
