@@ -109,7 +109,8 @@ interface Location {
   address:        string;
   neighborhood:   string;
   icon:           any;
-  accentColor:    string;
+  accentColor:    string; // 20% tint — card background
+  color:          string; // full category color — bar, deny dot, stat tiles
   items:          LocationItem[];
   detectedLocId?: string; // set when this card was created from a real tracked visit
 }
@@ -118,7 +119,7 @@ const LOCATIONS: Location[] = [
   {
     id: 1, name: 'Starbucks', category: 'Coffee',
     address: '100 Newbury St, Boston, MA', neighborhood: 'Coolidge Corner, MA',
-    icon: coffeeIcon, accentColor: PINK_BG,
+    icon: coffeeIcon, accentColor: '#fff0f8', color: '#ffb5db',
     items: [
       { icon: smallCoffeeIcon,  label: 'small coffee',  price: 3  },
       { icon: mediumCoffeeIcon, label: 'medium coffee', price: 6  },
@@ -128,7 +129,7 @@ const LOCATIONS: Location[] = [
   {
     id: 2, name: 'Brookline Booksmith', category: 'Shopping',
     address: '279 Harvard St, Brookline, MA', neighborhood: 'Coolidge Corner, MA',
-    icon: shoppingIcon, accentColor: '#F0FBF5',
+    icon: shoppingIcon, accentColor: '#fff6d6', color: '#fed130',
     items: [
       { icon: shoppingTier1Icon, label: 'bookmark',  price: 3  },
       { icon: shoppingTier2Icon, label: 'paperback', price: 15 },
@@ -138,7 +139,7 @@ const LOCATIONS: Location[] = [
   {
     id: 3, name: 'Barcelona Wine Bar', category: 'Food',
     address: '1700 Washington St, Boston, MA', neighborhood: 'South End, MA',
-    icon: foodIcon, accentColor: '#F5F0FF',
+    icon: foodIcon, accentColor: '#eefbfd', color: '#a8eaf6',
     items: [
       { icon: foodTier1Icon, label: 'wine glass', price: 12 },
       { icon: foodTier2Icon, label: 'appetizer',  price: 16 },
@@ -148,7 +149,7 @@ const LOCATIONS: Location[] = [
   {
     id: 4, name: 'CVS Pharmacy', category: 'Shopping',
     address: '36 JFK St, Cambridge, MA', neighborhood: 'Harvard Square, MA',
-    icon: shoppingIcon, accentColor: '#FFFBF0',
+    icon: shoppingIcon, accentColor: '#fff6d6', color: '#fed130',
     items: [
       { icon: shoppingTier1Icon, label: 'snacks',     price: 5  },
       { icon: shoppingTier2Icon, label: 'toiletries', price: 12 },
@@ -715,8 +716,24 @@ const CATEGORY_ICON: Record<string, any> = {
   Entertainment: entertainmentIcon, Transportation: transportationIcon, Other: otherIcon,
 };
 const CATEGORY_COLOR: Record<string, string> = {
-  Coffee: PINK_BG, 'Eating Out': '#F5F0FF', Groceries: '#E2F1D4', Shopping: '#F0FBF5',
-  Entertainment: '#F0F5FF', Transportation: '#FFFBF0', Other: '#FFFBF0',
+  'Eating Out':    '#eefbfd',
+  Food:            '#eefbfd',
+  Groceries:       'rgba(205,245,69,0.3)',
+  Coffee:          '#fff0f8',
+  Transportation:  '#ffeddd',
+  Entertainment:   '#f8eeff',
+  Shopping:        '#fff6d6',
+  Other:           '#ffe6e2',
+};
+const CATEGORY_FULL_COLOR: Record<string, string> = {
+  'Eating Out':    '#a8eaf6',
+  Food:            '#a8eaf6',
+  Groceries:       '#cdf545',
+  Coffee:          '#ffb5db',
+  Transportation:  '#ffa454',
+  Entertainment:   '#deabff',
+  Shopping:        '#fed130',
+  Other:           '#ff8270',
 };
 
 function detectedToLocation(d: DetectedLocation): Location {
@@ -729,6 +746,7 @@ function detectedToLocation(d: DetectedLocation): Location {
     neighborhood:  d.address,
     icon:          CATEGORY_ICON[cat] ?? shoppingIcon,
     accentColor:   CATEGORY_COLOR[cat] ?? PINK_BG,
+    color:         CATEGORY_FULL_COLOR[cat] ?? PINK_BAR,
     items:         CATEGORY_ITEMS[cat] ?? CATEGORY_ITEMS.Other,
     detectedLocId: d.id,
   };
@@ -984,7 +1002,7 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
             <Text style={styles.nameTxt}>{location.name}</Text>
           </View>
           <View style={styles.timeBlock}>
-            <View style={styles.pinkBar} />
+            <View style={[styles.pinkBar, { backgroundColor: location.color }]} />
             <View>
               <Text style={styles.timeTxt}>Today @{checkInTime}</Text>
               <Text style={styles.neighborhoodTxt}>{location.neighborhood}</Text>
@@ -1052,7 +1070,7 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
                     return (
                       <View key={i} style={{ position: 'absolute', left: cx - 10, bottom: TICK_TALL + RULER_BELOW + 8, alignItems: 'center', width: 20 }}>
                         {item.isNothing ? (
-                          <View style={styles.denyCircle}>
+                          <View style={[styles.denyCircle, { backgroundColor: location.color }]}>
                             <Image source={denyIcon} style={styles.denyIcon} contentFit="contain" />
                           </View>
                         ) : (
@@ -1088,22 +1106,26 @@ function ActiveCard({ location, onSwipe }: ActiveCardProps) {
           <View style={styles.statsBox}>
             <Text style={styles.statsTitle}>YOUR PATTERN HERE</Text>
             <View style={styles.statsTiles}>
-              <View style={styles.statTile}>
+              <View style={[styles.statTile, { backgroundColor: location.accentColor }]}>
                 <View style={styles.statValRow}>
-                  <Image source={moneySmallIcon} style={styles.statIcon} contentFit="contain" />
+                  <View style={[styles.statDot, { backgroundColor: location.color }]}>
+                    <Text style={styles.statDotSign}>$</Text>
+                  </View>
                   <Text style={styles.statAmt}>{stats.avg.toFixed(2)}</Text>
                 </View>
                 <Text style={styles.statLabel}>avg spend</Text>
               </View>
-              <View style={styles.statTile}>
+              <View style={[styles.statTile, { backgroundColor: location.accentColor }]}>
                 <View style={styles.statValRow}>
                   <Text style={styles.statCount}>×{stats.visits}</Text>
                 </View>
                 <Text style={styles.statLabel}>this month</Text>
               </View>
-              <View style={styles.statTile}>
+              <View style={[styles.statTile, { backgroundColor: location.accentColor }]}>
                 <View style={styles.statValRow}>
-                  <Image source={moneySmallIcon} style={styles.statIcon} contentFit="contain" />
+                  <View style={[styles.statDot, { backgroundColor: location.color }]}>
+                    <Text style={styles.statDotSign}>$</Text>
+                  </View>
                   <Text style={styles.statAmt}>{stats.total}</Text>
                 </View>
                 <Text style={styles.statLabel}>this month</Text>
@@ -1210,11 +1232,10 @@ export default function CheckInModal({ visible, onClose }: CheckInModalProps) {
           <View style={[styles.stackContainer, { height: CARD_HEIGHT + collapsed.length * HEADER_H }]}>
             {[...collapsed].reverse().map((loc, i) => {
               const distFromFront = collapsed.length - 1 - i;
-              const bgColor  = distFromFront === 2 ? PINK_BG  : distFromFront === 1 ? '#FFFFFF' : '#EBEBEB';
               return (
                 <View
                   key={loc.id}
-                  style={[styles.backCard, { top: i * HEADER_H, backgroundColor: bgColor, zIndex: 9 - distFromFront }]}
+                  style={[styles.backCard, { top: i * HEADER_H, backgroundColor: loc.accentColor, zIndex: 9 - distFromFront }]}
                 >
                   <View style={styles.peekRow}>
                     <Image source={loc.icon} style={styles.peekIcon} contentFit="contain" />
@@ -1415,10 +1436,15 @@ const styles = StyleSheet.create({
     borderRadius: 10, padding: 8, gap: 4,
     justifyContent: 'flex-end',
   },
-  statValRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  statIcon:  { width: 13, height: 13 },
+  statValRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  statDot: {
+    width: 20, height: 20, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  statDotSign: { fontSize: 14, fontWeight: '600', color: PRICE_COLOR, lineHeight: 20 },
+  statIcon:  { width: 14, height: 14 },
   statAmt:   { fontSize: 14, fontWeight: '600', color: PRICE_COLOR },
-  statCount: { fontSize: 14, fontWeight: '600', color: DARK_RED },
+  statCount: { fontSize: 14, fontWeight: '600', color: PRICE_COLOR },
   statLabel: { fontSize: 9, color: DARK_RED },
 
   // ── LOG button ──
