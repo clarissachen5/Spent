@@ -62,8 +62,25 @@ const CATEGORY_CONFIG = [
 // Fallback max per category when no budget has been saved yet
 const DEFAULT_CATEGORY_MAX = 100;
 
-// Rotating color palette for upcoming expense cards
-const PRED_COLORS = [
+// Category → color for upcoming expense cards (bg = light track, bar = accent)
+const PRED_CAT_BG: Record<string, string> = {
+  'Eating Out':    '#e4f3ff',
+  Groceries:       '#e2f1d4',
+  Coffee:          '#fde4ec',
+  Transportation:  '#ffe7d4',
+  Entertainment:   '#ece0f8',
+  Shopping:        '#fff1d6',
+};
+const PRED_CAT_BAR: Record<string, string> = {
+  'Eating Out':    '#9ED3F0',
+  Groceries:       '#A8D8A8',
+  Coffee:          '#F4B8C8',
+  Transportation:  '#FFCBA4',
+  Entertainment:   '#C9A8E8',
+  Shopping:        '#FCB842',
+};
+// Fallback rotating palette for uncategorised predictions
+const PRED_FALLBACK = [
   { bg: '#eefbfd', bar: '#a8eaf6' },
   { bg: '#fff6d6', bar: '#fed130' },
   { bg: '#f8eeff', bar: '#deabff' },
@@ -71,6 +88,12 @@ const PRED_COLORS = [
   { bg: '#ffeddd', bar: '#ffcba4' },
   { bg: '#e2f1d4', bar: '#a8d8a8' },
 ];
+function predColor(category: string | undefined, index: number): { bg: string; bar: string } {
+  if (category && PRED_CAT_BG[category]) {
+    return { bg: PRED_CAT_BG[category], bar: PRED_CAT_BAR[category] };
+  }
+  return PRED_FALLBACK[index % PRED_FALLBACK.length];
+}
 
 // Per-category colors for the category bars (figma "April Spending" section)
 const CATEGORY_BAR: Record<string, string> = {
@@ -553,7 +576,7 @@ export default function HomeScreen() {
             .sort((a, b) => a.date.localeCompare(b.date))
             .slice(0, 10)
             .map((p, i) => {
-              const palette = PRED_COLORS[i % PRED_COLORS.length];
+              const palette = predColor(p.category, i);
               const dateObj = new Date(p.date + 'T12:00:00');
               const dateLabel = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
               const dayLabel  = dateObj.toLocaleDateString('en-US', { weekday: 'short' });

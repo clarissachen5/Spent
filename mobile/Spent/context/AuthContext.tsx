@@ -29,6 +29,7 @@ export interface CheckInResult {
 export interface SpendingEstimate {
   date: string;
   event: string;
+  category?: string;
   low:    { amount: number; description: string };
   medium: { amount: number; description: string };
   high:   { amount: number; description: string };
@@ -190,11 +191,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const data = d.data();
           if (data.date && data.event) {
             loadedPredictions.push({
-              date:   data.date,
-              event:  data.event,
-              low:    data.low,
-              medium: data.medium,
-              high:   data.high,
+              date:     data.date,
+              event:    data.event,
+              category: data.category,
+              low:      data.low,
+              medium:   data.medium,
+              high:     data.high,
             });
           }
         });
@@ -217,12 +219,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('[Firestore] loaded', loadedCheckIns.length, 'check-ins for user', userId);
 
         const profileDoc = profileSnap.docs[0];
+        const loadedCategories: string[] = profileDoc?.data().categories ?? [];
         if (profileDoc) {
           const d = profileDoc.data();
           setUserProfileState({
             city:         d.city ?? '',
             school:       d.school ?? '',
-            categories:   d.categories ?? [],
+            categories:   loadedCategories,
             goals:        d.goals ?? [],
             pigName:      d.pigName,
             userName:     d.userName,
@@ -291,7 +294,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               const res = await fetch(`${API_BASE_URL}/ollama/analyze`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ events: batch }),
+                body: JSON.stringify({ events: batch, categories: loadedCategories }),
               });
               if (!res.ok) continue;
               const analysis = await res.json();
@@ -311,6 +314,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 await Promise.all(estimates.map(p =>
                   setDoc(userDoc(userId, 'spending_analyses', estimateDocId(p.date, p.event)), {
                     date: p.date, event: p.event,
+                    category: p.category ?? null,
                     low: p.low, medium: p.medium, high: p.high,
                     created_at: savedAt,
                   })
