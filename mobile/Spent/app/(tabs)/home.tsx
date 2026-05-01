@@ -164,6 +164,7 @@ export default function HomeScreen() {
   // Pig accessories — show when user has checked in to that category this month
   const pigAccessories = useMemo(() => {
     const now = new Date();
+    const todayStr = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
     const map: Record<string, string> = {
       Coffee:         'coffee(on/off)',
       Food:           'necklace(on/off)',
@@ -173,11 +174,13 @@ export default function HomeScreen() {
     };
     const acc: Record<string, boolean> = {};
     Object.entries(map).forEach(([cat, input]) => {
-      acc[input] = checkInResults.some(r => {
-        if (!r.visited || r.category !== cat) return false;
+      const matches = checkInResults.filter(r => {
         const d = r.timestamp instanceof Date ? r.timestamp : new Date(r.timestamp);
-        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        const dStr = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+        return dStr === todayStr && r.category === cat;
       });
+      console.log(`[pig] ${cat}: visited matches today =`, matches.map(r => ({ visited: r.visited, category: r.category, timestamp: r.timestamp })));
+      acc[input] = matches.some(r => r.visited);
     });
     return acc;
   }, [checkInResults]);

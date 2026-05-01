@@ -47,18 +47,31 @@ export default function PigAnimation({ accessories = {}, style }: PigAnimationPr
       buffer: b64ToBytes(b64).buffer,
       canvas: document.getElementById('c'),
       autoplay: true,
-      stateMachines: 'Blank Script 1',
+      stateMachines: 'piggy',
       onLoad: function() {
         r.resizeDrawingSurfaceToCanvas();
         r.play('idle bounce');
-        try {
-          var inputs = r.stateMachineInputs('Blank Script 1');
-          if (inputs) {
-            inputs.forEach(function(inp) {
-              if (accessories[inp.name] !== undefined) inp.value = accessories[inp.name];
-            });
-          }
-        } catch(e) {}
+        function post(msg) {
+          try { window.ReactNativeWebView.postMessage(msg); } catch(e) {}
+        }
+        post('[rive] smNames: ' + JSON.stringify(r.stateMachineNames));
+        function applyInputs(attempt) {
+          try {
+            var inputs = r.stateMachineInputs('piggy');
+            if (inputs && inputs.length > 0) {
+              inputs.forEach(function(inp) {
+                var val = accessories[inp.name] === true;
+                post('[rive] ' + inp.name + ' -> ' + val);
+                inp.value = val;
+              });
+            } else if (attempt < 20) {
+              setTimeout(function() { applyInputs(attempt + 1); }, 100);
+            } else {
+              post('[rive] gave up after 20 attempts');
+            }
+          } catch(e) { post('[rive] error: ' + e); }
+        }
+        applyInputs(0);
       }
     });
   };
@@ -85,6 +98,7 @@ export default function PigAnimation({ accessories = {}, style }: PigAnimationPr
         javaScriptEnabled
         backgroundColor="transparent"
         androidLayerType="hardware"
+        onMessage={e => console.log('[PigAnimation]', e.nativeEvent.data)}
       />
     </View>
   );
