@@ -18,6 +18,7 @@ export interface UserProfile {
 }
 
 export interface CheckInResult {
+  firestoreId?: string;
   location: string;
   category: string;
   visited: boolean;
@@ -53,6 +54,8 @@ interface AuthContextType {
   logout: () => void;
   checkInResults: CheckInResult[];
   addCheckInResult: (result: CheckInResult) => void;
+  updateCheckIn: (firestoreId: string, amount: number) => Promise<void>;
+  removeCheckIn: (firestoreId: string) => Promise<void>;
   predictions: SpendingEstimate[];
   mergePredictions: (incoming: SpendingEstimate[]) => void;
   predictionsLoaded: boolean;
@@ -72,6 +75,8 @@ const AuthContext = createContext<AuthContextType>({
   logout: () => {},
   checkInResults: [],
   addCheckInResult: () => {},
+  updateCheckIn: async () => {},
+  removeCheckIn: async () => {},
   predictions: [],
   mergePredictions: () => {},
   predictionsLoaded: false,
@@ -200,6 +205,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         checkInsSnap.forEach(d => {
           const data = d.data();
           loadedCheckIns.push({
+            firestoreId: d.id,
             location:  data.location,
             category:  data.category,
             visited:   data.visited,
@@ -338,22 +344,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [userId, token]);
 
   const addCheckInResult = (result: CheckInResult) => {
-    setCheckInResults(prev => [...prev, result]);
     (async () => {
       const uid = userId ?? await AsyncStorage.getItem(USER_ID_KEY);
       if (!uid) return;
       try {
-        await addDoc(userCol(uid, 'check_ins'), {
+        const ref = await addDoc(userCol(uid, 'check_ins'), {
           location:  result.location,
           category:  result.category,
           visited:   result.visited,
           amount:    result.amount ?? null,
           timestamp: result.timestamp.toISOString(),
         });
+        setCheckInResults(prev => [...prev, { ...result, firestoreId: ref.id }]);
       } catch (e) {
         console.warn('[Firestore] check-in save failed:', e);
+        setCheckInResults(prev => [...prev, result]);
       }
     })();
+  };
+
+  const updateCheckIn = async (firestoreId: string, amount: number) => {
+    const uid = userId ?? await AsyncStorage.getItem(USER_ID_KEY);
+    if (!uid) return;
+    await updateDoc(userDoc(uid, 'check_ins', firestoreId), { amount });
+    setCheckInResults(prev =>
+      prev.map(r => r.firestoreId === firestoreId ? { ...r, amount } : r)
+    );
+  };
+
+  const removeCheckIn = async (firestoreId: string) => {
+    const uid = userId ?? await AsyncStorage.getItem(USER_ID_KEY);
+    if (!uid) return;
+    await deleteDoc(userDoc(uid, 'check_ins', firestoreId));
+    setCheckInResults(prev => prev.filter(r => r.firestoreId !== firestoreId));
   };
 
   const saveUserProfile = async (profile: UserProfile) => {
@@ -409,7 +432,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{
       token, userId, setToken, logout,
-      checkInResults, addCheckInResult,
+      checkInResults, addCheckInResult, updateCheckIn, removeCheckIn,
       predictions, mergePredictions, predictionsLoaded,
       userProfile, profileLoaded, saveUserProfile,
       pendingLocations, markLocationShown,

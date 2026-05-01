@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Dimensions,
   ScrollView,
+  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -92,13 +93,15 @@ function sortEvents(events: CalendarEvent[]): CalendarEvent[] {
 
 export default function CalendarScreen() {
   const { top }   = useSafeAreaInsets();
-  const { token, userId, checkInResults, predictions, mergePredictions, predictionsLoaded } = useAuth();
+  const { token, userId, checkInResults, predictions, mergePredictions, predictionsLoaded, updateCheckIn, removeCheckIn } = useAuth();
 
   const [monthOffset, setMonthOffset]       = useState(0);
   const [eventsByDate, setEventsByDate]     = useState<{ [dateStr: string]: CalendarEvent[] }>({});
   const [fetchedMonths, setFetchedMonths]   = useState<Set<string>>(new Set());
   const [selectedDate, setSelectedDate]     = useState<string | null>(null);
   const [graphRowWidth, setGraphRowWidth]   = useState(0);
+  const [editingId, setEditingId]           = useState<string | null>(null);
+  const [editValue, setEditValue]           = useState('');
 
   // Normalize event titles so minor differences (case, whitespace) don't break matching
   const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -534,13 +537,44 @@ export default function CalendarScreen() {
           <Text style={styles.listLabel}>CHECK IN</Text>
           {selectedCheckIns.map((r, i) => {
             const bg = CATEGORY_PILL_BG[r.category] ?? CATEGORY_PILL_BG.Other;
+            const isEditing = editingId != null && editingId === r.firestoreId;
             return (
               <View key={`checkin-${i}`} style={[styles.checkInPill, { backgroundColor: bg }]}>
                 <Text style={styles.checkInName} numberOfLines={1}>{r.location}</Text>
-                <Text style={styles.checkInAmountNew}>${r.amount ?? 0}</Text>
-                <View style={styles.editDot}>
-                  <Text style={styles.editDotText}>✎</Text>
-                </View>
+                {isEditing ? (
+                  <TextInput
+                    style={styles.checkInAmountInput}
+                    value={editValue}
+                    onChangeText={setEditValue}
+                    keyboardType="decimal-pad"
+                    autoFocus
+                    selectTextOnFocus
+                  />
+                ) : (
+                  <Text style={styles.checkInAmountNew}>${r.amount ?? 0}</Text>
+                )}
+                <TouchableOpacity
+                  style={[styles.editDot, isEditing && styles.saveDot]}
+                  onPress={async () => {
+                    if (!isEditing) {
+                      setEditingId(r.firestoreId ?? null);
+                      setEditValue(String(r.amount ?? 0));
+                    } else {
+                      const num = parseFloat(editValue);
+                      setEditingId(null);
+                      if (!r.firestoreId) return;
+                      if (isNaN(num) || num <= 0) {
+                        await removeCheckIn(r.firestoreId);
+                      } else {
+                        await updateCheckIn(r.firestoreId, num);
+                      }
+                    }
+                  }}
+                >
+                  <Text style={[styles.editDotText, isEditing && styles.saveDotText]}>
+                    {isEditing ? '✓' : '✎'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             );
           })}
@@ -895,6 +929,25 @@ const styles = StyleSheet.create({
   editDotText: {
     fontSize: 10,
     color: '#6b6b6b',
+  },
+  saveDot: {
+    backgroundColor: DEEP_GREEN,
+    borderColor: DEEP_GREEN,
+  },
+  saveDotText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  checkInAmountInput: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: DARK_TEXT,
+    borderBottomWidth: 1,
+    borderBottomColor: DEEP_GREEN,
+    minWidth: 50,
+    textAlign: 'right',
+    paddingVertical: 0,
   },
   eventRowNew: {
     flexDirection: 'row',
