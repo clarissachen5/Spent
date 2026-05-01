@@ -19,6 +19,24 @@ app = FastAPI()
 ollama_client = Client()
 
 
+def infer_category(event_title: str, categories: list[str]) -> str:
+    """Keyword-based fallback when the model omits or misspells the category."""
+    title_lower = event_title.lower()
+    keyword_map = {
+        "Eating Out":     ["restaurant", "dinner", "lunch", "brunch", "eat", "food", "cafe", "bar", "pub", "pizza", "sushi", "burger", "taco"],
+        "Groceries":      ["grocery", "groceries", "supermarket", "market", "whole foods", "trader joe", "costco"],
+        "Coffee":         ["coffee", "latte", "starbucks", "dunkin", "boba", "tea", "espresso", "cafe"],
+        "Transportation": ["uber", "lyft", "bus", "train", "subway", "flight", "airport", "commute", "drive", "car", "bike", "transit"],
+        "Entertainment":  ["concert", "movie", "show", "game", "sport", "theater", "festival", "party", "club", "bar", "event", "ticket"],
+        "Shopping":       ["shop", "mall", "store", "buy", "purchase", "amazon", "order", "sale", "outlet"],
+    }
+    for cat in categories:
+        keywords = keyword_map.get(cat, [cat.lower()])
+        if any(kw in title_lower for kw in keywords):
+            return cat
+    return categories[0]
+
+
 @app.post("/ollama/analyze")
 async def analyze_events(request: Request):
     try:
@@ -26,24 +44,23 @@ async def analyze_events(request: Request):
     except Exception as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
     events = data.get("events", {})
+    categories = data.get("categories", [])
+    if not categories:
+        return JSONResponse(status_code=400, content={"error": "categories are required"})
+    categories_str = ", ".join(categories)
 
-    prompt = f"""Given these events {json.dumps(events, indent=2)} estimate how much this college student would spend at each event. Give me back three different amounts low, medium, high. With each spend amount give me a max three word description of what they buy.
+    prompt = f"""Return ONLY a JSON object. No explanation, no markdown, no extra text.
 
-Return ONLY a JSON object with this structure, no explanation:
-{{
-  "estimates": [
-    {{
-      "date": "YYYY-MM-DD",
-      "event": "event title",
-      "low": {{ "amount": 0.00, "description": "three word description" }},
-      "medium": {{ "amount": 0.00, "description": "three word description" }},
-      "high": {{ "amount": 0.00, "description": "three word description" }}
-    }}
-  ]
-}}
-"""
+Spending categories: {categories_str}
 
-    print("Calling Ollama with", len(events), "events...")
+Calendar events: {json.dumps(events)}
+
+For every event produce: date (YYYY-MM-DD), event (title string), category (pick one from the spending categories list, exact spelling), low (amount number + description string max 3 words), medium (amount + description), high (amount + description).
+
+Output exactly this structure:
+{{"estimates":[{{"date":"YYYY-MM-DD","event":"title","category":"category name","low":{{"amount":0,"description":"words"}},"medium":{{"amount":0,"description":"words"}},"high":{{"amount":0,"description":"words"}}}}]}}"""
+
+    print("Calling Ollama with", len(events), "events, categories:", categories)
     try:
         result = ollama_client.generate(model="llama3.2:3b", prompt=prompt, options={"num_predict": 8192})
     except Exception as e:
@@ -57,8 +74,19 @@ Return ONLY a JSON object with this structure, no explanation:
     try:
         json_match = re.search(r"\{[\s\S]*\}", raw_response)
         if json_match:
-            parsed_estimates = json_match.group(0)
-            json.loads(parsed_estimates)  # validate it parses
+            parsed_json = json.loads(json_match.group(0))
+            estimates = parsed_json.get("estimates", [])
+
+            # Validate / repair category on every estimate
+            valid_cats = set(categories)
+            for est in estimates:
+                cat = est.get("category", "")
+                if cat not in valid_cats:
+                    # Try case-insensitive match first
+                    matched = next((c for c in categories if c.lower() == cat.lower()), None)
+                    est["category"] = matched if matched else infer_category(est.get("event", ""), categories)
+
+            parsed_estimates = json.dumps({"estimates": estimates})
     except Exception:
         parsed_estimates = None
 
@@ -102,7 +130,7 @@ Write a short, encouraging 2-3 sentence summary of their spending habits this mo
         traceback.print_exc()
         return JSONResponse(status_code=500, content={"error": f"Ollama error: {str(e)}"})
 
-    return JSONResponse(content={"summary": result.response.strip()})
+    return JSONResponse(content={"summary": result.response})
 
 
 @app.get("/ollama/analyses", response_model=list[SpendingAnalysisOut])

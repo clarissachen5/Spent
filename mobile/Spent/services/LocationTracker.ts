@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -75,7 +76,7 @@ async function createDetectedLocation(lat: number, lng: number, arrivedAt: numbe
 }
 
 // ── Background task ───────────────────────────────────────────────────────────
-TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: TaskManager.TaskManagerTaskBody) => {
+if (Platform.OS !== 'web') TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: TaskManager.TaskManagerTaskBody) => {
   if (error) {
     console.error('[LocationTracker] task error:', error);
     return;
@@ -118,6 +119,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: TaskManager.T
 
 // ── Public API ────────────────────────────────────────────────────────────────
 export async function startLocationTracking(): Promise<boolean> {
+  if (Platform.OS === 'web') return false;
   const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
   if (fgStatus !== 'granted') return false;
 
@@ -148,6 +150,7 @@ export async function startLocationTracking(): Promise<boolean> {
 }
 
 export async function stopLocationTracking(): Promise<void> {
+  if (Platform.OS === 'web') return;
   const registered = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK_NAME);
   if (registered) {
     await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);

@@ -14,6 +14,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import CheckInModal from '../../components/CheckInModal';
 import PredictiveGraphRow from '../../components/PredictiveGraphRow';
+import PigAnimation from '../../components/PigAnimation';
 import { API_BASE_URL } from '../../constants/config';
 import { getFirestore, setDoc, doc } from 'firebase/firestore';
 import { app } from '../../src/config/firebase';
@@ -50,41 +51,74 @@ const calendarIcon       = require('../../assets/icons/calendarIcon.svg');
 const DAY_NAMES = ['Sun', 'Mon', 'Tues', 'Wed', 'Thurs', 'Fri', 'Sat'];
 
 const CATEGORY_CONFIG = [
-  { name: 'Food',           icon: foodIcon           },
-  { name: 'Shopping',       icon: shoppingIcon       },
+  { name: 'Eating Out',     icon: foodIcon           },
+  { name: 'Groceries',      icon: bagIcon            },
   { name: 'Coffee',         icon: coffeeIcon         },
-  { name: 'Entertainment',  icon: entertainmentIcon  },
   { name: 'Transportation', icon: transportationIcon },
-  { name: 'Other',          icon: otherIcon          },
+  { name: 'Entertainment',  icon: entertainmentIcon  },
+  { name: 'Shopping',       icon: shoppingIcon       },
 ];
 
 // Fallback max per category when no budget has been saved yet
 const DEFAULT_CATEGORY_MAX = 100;
 
+// Category → color for upcoming expense cards (bg = light track, bar = accent)
+const PRED_CAT_BG: Record<string, string> = {
+  'Eating Out':    '#e4f3ff',
+  Groceries:       '#e2f1d4',
+  Coffee:          '#fde4ec',
+  Transportation:  '#ffe7d4',
+  Entertainment:   '#ece0f8',
+  Shopping:        '#fff1d6',
+};
+const PRED_CAT_BAR: Record<string, string> = {
+  'Eating Out':    '#9ED3F0',
+  Groceries:       '#A8D8A8',
+  Coffee:          '#F4B8C8',
+  Transportation:  '#FFCBA4',
+  Entertainment:   '#C9A8E8',
+  Shopping:        '#FCB842',
+};
+// Fallback rotating palette for uncategorised predictions
+const PRED_FALLBACK = [
+  { bg: '#eefbfd', bar: '#a8eaf6' },
+  { bg: '#fff6d6', bar: '#fed130' },
+  { bg: '#f8eeff', bar: '#deabff' },
+  { bg: '#fff0f8', bar: '#ffb5db' },
+  { bg: '#ffeddd', bar: '#ffcba4' },
+  { bg: '#e2f1d4', bar: '#a8d8a8' },
+];
+function predColor(category: string | undefined, index: number): { bg: string; bar: string } {
+  if (category && PRED_CAT_BG[category]) {
+    return { bg: PRED_CAT_BG[category], bar: PRED_CAT_BAR[category] };
+  }
+  return PRED_FALLBACK[index % PRED_FALLBACK.length];
+}
+
 // Per-category colors for the category bars (figma "April Spending" section)
 const CATEGORY_BAR: Record<string, string> = {
-  Food:           '#9ED3F0',
-  Shopping:       '#FCB842',
-  Coffee:         '#F4B8C8',
-  Entertainment:  '#C9A8E8',
-  Transportation: '#FFCBA4',
-  Other:          '#F4A0A0',
+  'Eating Out':    '#9ED3F0',
+  Groceries:       '#A8D8A8',
+  Coffee:          '#F4B8C8',
+  Transportation:  '#FFCBA4',
+  Entertainment:   '#C9A8E8',
+  Shopping:        '#FCB842',
 };
 const CATEGORY_TRACK: Record<string, string> = {
-  Food:           '#e4f3ff',
-  Shopping:       '#fff1d6',
-  Coffee:         '#fde4ec',
-  Entertainment:  '#ece0f8',
-  Transportation: '#ffe7d4',
-  Other:          '#fde0e0',
+  'Eating Out':    '#e4f3ff',
+  Groceries:       '#e2f1d4',
+  Coffee:          '#fde4ec',
+  Transportation:  '#ffe7d4',
+  Entertainment:   '#ece0f8',
+  Shopping:        '#fff1d6',
 };
 const CATEGORY_PILL_BG: Record<string, string> = {
-  Food:           '#e4f3ff',
-  Shopping:       '#fff1d6',
-  Coffee:         '#fde4ec',
-  Entertainment:  '#ece0f8',
-  Transportation: '#ffe7d4',
-  Other:          '#fde0e0',
+  'Eating Out':    '#e4f3ff',
+  Groceries:       '#e2f1d4',
+  Coffee:          '#fde4ec',
+  Transportation:  '#ffe7d4',
+  Entertainment:   '#ece0f8',
+  Shopping:        '#fff1d6',
 };
 
 // Returns 7 consecutive dates starting at today + dayOffset
@@ -117,7 +151,7 @@ const LOCATION_TASK_NAME = 'spent-background-location';
 export default function HomeScreen() {
   const { top } = useSafeAreaInsets();
   const { token: paramToken, checkIn } = useLocalSearchParams();
-  const { token: contextToken, checkInResults, predictions, mergePredictions, predictionsLoaded, pendingLocations, monthlyBudget } = useAuth();
+  const { token: contextToken, checkInResults, predictions, mergePredictions, predictionsLoaded, pendingLocations, monthlyBudget, userProfile } = useAuth();
   const token = contextToken ?? paramToken;
   const [trackingActive, setTrackingActive] = useState(false);
   const [farmAspectRatio, setFarmAspectRatio] = useState(1);
@@ -145,6 +179,15 @@ export default function HomeScreen() {
     return totals;
   }, [checkInResults]);
 
+  // Merge preset categories with any custom ones from user profile
+  const allCategoryConfig = useMemo(() => {
+    const presetNames = new Set(CATEGORY_CONFIG.map(c => c.name));
+    const custom = (userProfile?.categories ?? [])
+      .filter(name => !presetNames.has(name))
+      .map(name => ({ name, icon: otherIcon }));
+    return [...CATEGORY_CONFIG, ...custom];
+  }, [userProfile?.categories]);
+
   // Pick farm background + spending score based on actual spend vs monthly budget
   const { farmImage, spendingScore } = useMemo(() => {
     const totalSpent  = Object.values(categoryTotals).reduce((s, v) => s + v, 0);
@@ -159,6 +202,30 @@ export default function HomeScreen() {
     if (ratio > 0.5) return { farmImage: FARM_IMAGES[3], spendingScore: 4 };
     return { farmImage: FARM_IMAGES[4], spendingScore: 5 };
   }, [categoryTotals, monthlyBudget]);
+
+  // Pig accessories — show when user has checked in to that category this month
+  const pigAccessories = useMemo(() => {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+    const map: Record<string, string> = {
+      Coffee:          'coffee_off',
+      'Eating Out':    'necklace_off',
+      Shopping:        'glasses_off',
+      Entertainment:   'crown_off',
+      Transportation:  'wings_off',
+    };
+    const acc: Record<string, boolean> = {};
+    Object.entries(map).forEach(([cat, input]) => {
+      const hasCheckin = checkInResults.some(r => {
+        if (!r.visited || r.category !== cat) return false;
+        const d = r.timestamp instanceof Date ? r.timestamp : new Date(r.timestamp);
+        const dStr = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+        return dStr === todayStr;
+      });
+      acc[input] = !hasCheckin; // _off = true means hidden, false means visible
+    });
+    return acc;
+  }, [checkInResults]);
 
   // Sum medium predicted spend per day
   const predictedTotalsByDate = useMemo(() => {
@@ -350,6 +417,30 @@ export default function HomeScreen() {
         }}
       />
 
+      {/* ── Pig name — fixed top center ── */}
+      {userProfile?.pigName ? (
+        <View style={{ position: 'absolute', top: top + 16, left: 0, right: 0, alignItems: 'center', zIndex: 10 }}>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: DARK_GREEN }}>{userProfile.pigName}</Text>
+        </View>
+      ) : null}
+
+      {/* ── Check-in + streak — fixed top right ── */}
+      <View style={[styles.farmOverlayRight, { position: 'absolute', top: top + 12, left: 20, zIndex: 10 }]}>
+        <View style={styles.checkInWrapper}>
+          <TouchableOpacity
+            style={styles.checkInButton}
+            onPress={() => setCheckInVisible(true)}
+          >
+            <Image source={clipboardIcon} style={styles.clipboardImg} contentFit="contain" />
+            <Text style={styles.checkInLabel}>check in</Text>
+          </TouchableOpacity>
+          <View style={styles.streakBadge}>
+            <Image source={flameIcon} style={styles.flameImg} contentFit="contain" />
+            <Text style={styles.streakCount}>{streak}</Text>
+          </View>
+        </View>
+      </View>
+
     <ScrollView
       style={styles.scrollView}
       contentContainerStyle={[styles.content, { paddingTop: top + 20 }]}
@@ -366,21 +457,9 @@ export default function HomeScreen() {
             />
           ))}
         </View>
-        {/* Check-in + streak — bottom right */}
-        <View style={styles.farmOverlayRight}>
-          <View style={styles.checkInWrapper}>
-            <TouchableOpacity
-              style={styles.checkInButton}
-              onPress={() => setCheckInVisible(true)}
-            >
-              <Image source={clipboardIcon} style={styles.clipboardImg} contentFit="contain" />
-              <Text style={styles.checkInLabel}>check in</Text>
-            </TouchableOpacity>
-            <View style={styles.streakBadge}>
-              <Image source={flameIcon} style={styles.flameImg} contentFit="contain" />
-              <Text style={styles.streakCount}>{streak}</Text>
-            </View>
-          </View>
+        {/* Animated pig — absolutely centered */}
+        <View style={styles.pigContainer}>
+          <PigAnimation accessories={pigAccessories} style={styles.pigAnimation} />
         </View>
       </View>
 
@@ -403,10 +482,6 @@ export default function HomeScreen() {
       <View style={styles.sectionRow}>
         <View style={styles.predictivePill}>
           <Text style={styles.predictivePillText}>PREDICTIVE SPENDING</Text>
-        </View>
-        <View style={styles.seeMorePillMuted}>
-          <Text style={styles.seeMoreTextMuted}>see more</Text>
-          <Image source={seeMoreArrow} style={styles.seeMoreArrowImg} contentFit="contain" />
         </View>
       </View>
 
@@ -451,28 +526,24 @@ export default function HomeScreen() {
             {monthNameUpper} SPENDING
           </Text>
         </View>
-        <View style={styles.seeMorePillMuted}>
-          <Text style={styles.seeMoreTextMuted}>see more</Text>
-          <Image source={seeMoreArrow} style={styles.seeMoreArrowImg} contentFit="contain" />
-        </View>
       </View>
 
       {/* ── Spending categories card ── */}
       <View style={styles.categoriesCard}>
-        {CATEGORY_CONFIG.map((cat, i) => {
+        {allCategoryConfig.map((cat, i) => {
           const amount = categoryTotals[cat.name] ?? 0;
           const userMax = monthlyBudget[cat.name];
           const max    = userMax || DEFAULT_CATEGORY_MAX;
           const fill   = Math.min(amount / max, 1);
-          const bar    = CATEGORY_BAR[cat.name] ?? CATEGORY_BAR.Other;
-          const track  = CATEGORY_TRACK[cat.name] ?? CATEGORY_TRACK.Other;
-          const pill   = CATEGORY_PILL_BG[cat.name] ?? CATEGORY_PILL_BG.Other;
+          const bar    = CATEGORY_BAR[cat.name]    ?? '#F4A0A0';
+          const track  = CATEGORY_TRACK[cat.name]  ?? '#FDE0E0';
+          const pill   = CATEGORY_PILL_BG[cat.name] ?? '#FDE0E0';
           return (
             <View
               key={cat.name}
               style={[
                 styles.categoryRowNew,
-                i < CATEGORY_CONFIG.length - 1 && styles.categoryDividerNew,
+                i < allCategoryConfig.length - 1 && styles.categoryDividerNew,
               ]}
             >
               <View style={styles.categoryTopRow}>
@@ -512,19 +583,32 @@ export default function HomeScreen() {
             .filter(p => p.date >= toDateStr(new Date()))
             .sort((a, b) => a.date.localeCompare(b.date))
             .slice(0, 10)
-            .map((p, i, arr) => (
-            <View key={i} style={[styles.predictionRow, i < arr.length - 1 && styles.categoryDivider]}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.predictionEvent}>{p.event}</Text>
-                <Text style={styles.predictionDate}>{p.date}</Text>
-              </View>
-              <View style={styles.predictionAmounts}>
-                <Text style={styles.predictionLow}>${Number(p.low?.amount ?? 0).toFixed(2)}</Text>
-                <Text style={styles.predictionMed}>${Number(p.medium?.amount ?? 0).toFixed(2)}</Text>
-                <Text style={styles.predictionHigh}>${Number(p.high?.amount ?? 0).toFixed(2)}</Text>
-              </View>
-            </View>
-          ))}
+            .map((p, i) => {
+              const palette = predColor(p.category, i);
+              const dateObj = new Date(p.date + 'T12:00:00');
+              const dateLabel = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              const dayLabel  = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+              const med = Number(p.medium?.amount ?? 0);
+              const medStr = med % 1 === 0 ? `$${med}` : `$${med.toFixed(2)}`;
+              return (
+                <View key={i} style={styles.upcomingRow}>
+                  <View style={[styles.upcomingDateBlock, { backgroundColor: palette.bg }]}>
+                    <View style={[styles.upcomingDateBar, { backgroundColor: palette.bar }]} />
+                    <View style={styles.upcomingDateTexts}>
+                      <Text style={styles.upcomingDateLine}>{dateLabel}</Text>
+                      <Text style={styles.upcomingDateLine}>{dayLabel}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.upcomingEvent} numberOfLines={2}>{p.event}</Text>
+                  <View style={[styles.upcomingAmtBox, { borderColor: '#0a2627' }]}>
+                    <Text style={styles.upcomingAmtTxt}>{medStr}</Text>
+                    <View style={[styles.upcomingAmtCircle, { backgroundColor: palette.bg }]}>
+                      <Text style={styles.upcomingAmtSparkle}>✦</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
         </View>
       )}
 
@@ -633,6 +717,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: 16,
     paddingHorizontal: 16,
+  },
+  pigContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    pointerEvents: 'none',
+  },
+  pigAnimation: {
+    width: 160,
+    height: 160,
   },
   farmOverlayRight: {
     alignItems: 'center',
@@ -919,46 +1015,73 @@ const styles = StyleSheet.create({
     height: 21.5,
   },
   predictionsCard: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 4,
-    gap: 7,
+    gap: 10,
   },
-  predictionRow: {
+  upcomingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    borderWidth: 1,
+    borderColor: '#eff0f0',
+    borderRadius: 10,
+    padding: 6,
   },
-  predictionEvent: {
-    fontSize: 12,
-    color: '#1e1d19',
-    fontWeight: '500',
-  },
-  predictionDate: {
-    fontSize: 10,
-    color: '#a5a5a5',
-  },
-  predictionAmounts: {
+  upcomingDateBlock: {
+    borderRadius: 5,
     flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     gap: 8,
+  },
+  upcomingDateBar: {
+    width: 3,
+    borderRadius: 2,
+  },
+  upcomingDateTexts: {
+    gap: 5,
+  },
+  upcomingDateLine: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#0a2627',
+  },
+  upcomingEvent: {
+    flex: 1,
+    fontSize: 10,
+    color: '#0a2627',
+  },
+  upcomingAmtBox: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 5,
+    borderWidth: 0.5,
+    borderRadius: 5,
+    paddingLeft: 10,
+    paddingRight: 6,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 0.5 },
+    elevation: 1,
   },
-  predictionLow: {
-    fontSize: 11,
-    color: '#0a542f',
+  upcomingAmtTxt: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#0a2627',
   },
-  predictionMed: {
-    fontSize: 11,
-    color: '#800039',
+  upcomingAmtCircle: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  predictionHigh: {
-    fontSize: 11,
-    color: '#4F090B',
+  upcomingAmtSparkle: {
+    fontSize: 8,
+    color: '#0a2627',
+    lineHeight: 10,
   },
   amountGroup: {
     flexDirection: 'row',

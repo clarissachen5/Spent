@@ -34,20 +34,19 @@ const FONT_BOLD   = 'SpaceGrotesk_700Bold';
 
 // Pastel category palette
 const CATEGORY_META: Record<string, { bg: string; icon?: any }> = {
-  Food:           { bg: '#d6ecec', icon: require('../../assets/icons/foodIcon.svg') },
+  'Eating Out':   { bg: '#d6ecec', icon: require('../../assets/icons/foodIcon.svg') },
+  Groceries:      { bg: '#e2f1d4', icon: require('../../assets/icons/bagIcon.svg') },
   Coffee:         { bg: '#fbdfe2', icon: require('../../assets/icons/coffeeIcon.svg') },
+  Transportation: { bg: '#d8e9fb', icon: require('../../assets/icons/transportationIcon.svg') },
   Entertainment:  { bg: '#e6dffb', icon: require('../../assets/icons/entertainmentIcon.svg') },
   Shopping:       { bg: '#fdf0c8', icon: require('../../assets/icons/shoppingIcon.svg') },
-  Other:          { bg: '#fbe0d8', icon: require('../../assets/icons/otherIcon.svg') },
-  Transportation: { bg: '#d8e9fb', icon: require('../../assets/icons/transportationIcon.svg') },
-  Groceries:      { bg: '#e2f1d4', icon: require('../../assets/icons/bagIcon.svg') },
-  'Eating Out':   { bg: '#d6ecec', icon: require('../../assets/icons/foodIcon.svg') },
 };
-const FALLBACK_BG = '#f0f0f0';
+const FALLBACK_BG   = '#f0f0f0';
+const FALLBACK_ICON = require('../../assets/icons/otherIcon.svg');
 
 const PIG = require('../../assets/images/pig.png');
 
-const PRESET_CATEGORIES = ['Food', 'Shopping', 'Coffee', 'Entertainment', 'Transportation', 'Other'];
+const PRESET_CATEGORIES = ['Eating Out', 'Groceries', 'Coffee', 'Transportation', 'Entertainment', 'Shopping'];
 
 export default function SettingsScreen() {
   const { top }  = useSafeAreaInsets();
@@ -88,13 +87,23 @@ export default function SettingsScreen() {
     setList(list.includes(item) ? list.filter(i => i !== item) : [...list, item]);
   };
 
-  const addCustomCategory = () => {
+  const addCustomCategory = async () => {
     const val = customCatInput.trim();
     if (!val || allCategories.map(c => c.toLowerCase()).includes(val.toLowerCase())) return;
-    setAllCategories(prev => [...prev, val]);
-    setCategories(prev => [...prev, val]);
+    const newAll = [...allCategories, val];
+    const newSelected = [...categories, val];
+    setAllCategories(newAll);
+    setCategories(newSelected);
     setCustomCatInput('');
     setShowCatInput(false);
+    try {
+      await saveUserProfile({
+        ...(userProfile ?? { categories: [], goals: [] }),
+        categories: newSelected,
+      });
+    } catch (e) {
+      console.warn('[Settings] failed to save new category:', e);
+    }
   };
 
   const handleSave = async () => {
@@ -203,11 +212,7 @@ export default function SettingsScreen() {
                     !selected && styles.tileUnselected,
                   ]}
                 >
-                  {meta.icon ? (
-                    <ExpoImage source={meta.icon} style={styles.tileIcon} contentFit="contain" />
-                  ) : (
-                    <View style={styles.tileIcon} />
-                  )}
+                  <ExpoImage source={meta.icon ?? FALLBACK_ICON} style={styles.tileIcon} contentFit="contain" />
                   <Text style={styles.tileLabel} numberOfLines={1}>{cat}</Text>
                 </View>
               </TouchableOpacity>
