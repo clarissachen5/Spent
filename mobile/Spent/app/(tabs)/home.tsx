@@ -118,7 +118,7 @@ const LOCATION_TASK_NAME = 'spent-background-location';
 export default function HomeScreen() {
   const { top } = useSafeAreaInsets();
   const { token: paramToken, checkIn } = useLocalSearchParams();
-  const { token: contextToken, checkInResults, predictions, mergePredictions, predictionsLoaded, pendingLocations, monthlyBudget } = useAuth();
+  const { token: contextToken, checkInResults, predictions, mergePredictions, predictionsLoaded, pendingLocations, monthlyBudget, userProfile } = useAuth();
   const token = contextToken ?? paramToken;
   const [trackingActive, setTrackingActive] = useState(false);
   const [farmAspectRatio, setFarmAspectRatio] = useState(1);
@@ -145,6 +145,15 @@ export default function HomeScreen() {
     });
     return totals;
   }, [checkInResults]);
+
+  // Merge preset categories with any custom ones from user profile
+  const allCategoryConfig = useMemo(() => {
+    const presetNames = new Set(CATEGORY_CONFIG.map(c => c.name));
+    const custom = (userProfile?.categories ?? [])
+      .filter(name => !presetNames.has(name))
+      .map(name => ({ name, icon: otherIcon }));
+    return [...CATEGORY_CONFIG, ...custom];
+  }, [userProfile?.categories]);
 
   // Pick farm background + spending score based on actual spend vs monthly budget
   const { farmImage, spendingScore } = useMemo(() => {
@@ -480,20 +489,20 @@ export default function HomeScreen() {
 
       {/* ── Spending categories card ── */}
       <View style={styles.categoriesCard}>
-        {CATEGORY_CONFIG.map((cat, i) => {
+        {allCategoryConfig.map((cat, i) => {
           const amount = categoryTotals[cat.name] ?? 0;
           const userMax = monthlyBudget[cat.name];
           const max    = userMax || DEFAULT_CATEGORY_MAX;
           const fill   = Math.min(amount / max, 1);
-          const bar    = CATEGORY_BAR[cat.name] ?? CATEGORY_BAR.Other;
-          const track  = CATEGORY_TRACK[cat.name] ?? CATEGORY_TRACK.Other;
-          const pill   = CATEGORY_PILL_BG[cat.name] ?? CATEGORY_PILL_BG.Other;
+          const bar    = CATEGORY_BAR[cat.name]    ?? '#F4A0A0';
+          const track  = CATEGORY_TRACK[cat.name]  ?? '#FDE0E0';
+          const pill   = CATEGORY_PILL_BG[cat.name] ?? '#FDE0E0';
           return (
             <View
               key={cat.name}
               style={[
                 styles.categoryRowNew,
-                i < CATEGORY_CONFIG.length - 1 && styles.categoryDividerNew,
+                i < allCategoryConfig.length - 1 && styles.categoryDividerNew,
               ]}
             >
               <View style={styles.categoryTopRow}>

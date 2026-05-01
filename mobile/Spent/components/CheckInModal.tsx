@@ -591,9 +591,6 @@ function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
         {allCategories.map(cat => (
           <View key={cat.name} style={[budgetStyles.categoryRow, { borderColor: LIGHT_GRAY }]}>
             <View style={budgetStyles.categoryHeader}>
-              <View style={[budgetStyles.iconWrap, { backgroundColor: cat.lightColor }]}>
-                <Image source={cat.icon} style={budgetStyles.catIcon} contentFit="contain" />
-              </View>
               <Text style={budgetStyles.categoryName}>{cat.name}</Text>
               <Text style={[budgetStyles.categoryAmt, { color: cat.color }]}>${amounts[cat.name]}</Text>
             </View>
