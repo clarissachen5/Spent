@@ -166,21 +166,21 @@ export default function HomeScreen() {
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
     const map: Record<string, string> = {
-      Coffee:         'coffee(on/off)',
-      Food:           'necklace(on/off)',
-      Shopping:       'glasses(on/off)',
-      Entertainment:  'crown(on/off)',
-      Transportation: 'wings(on/off)',
+      Coffee:         'coffee_off',
+      Food:           'necklace_off',
+      Shopping:       'glasses_off',
+      Entertainment:  'crown_off',
+      Transportation: 'wings_off',
     };
     const acc: Record<string, boolean> = {};
     Object.entries(map).forEach(([cat, input]) => {
-      const matches = checkInResults.filter(r => {
+      const hasCheckin = checkInResults.some(r => {
+        if (!r.visited || r.category !== cat) return false;
         const d = r.timestamp instanceof Date ? r.timestamp : new Date(r.timestamp);
         const dStr = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-        return dStr === todayStr && r.category === cat;
+        return dStr === todayStr;
       });
-      console.log(`[pig] ${cat}: visited matches today =`, matches.map(r => ({ visited: r.visited, category: r.category, timestamp: r.timestamp })));
-      acc[input] = matches.some(r => r.visited);
+      acc[input] = !hasCheckin; // _off = true means hidden, false means visible
     });
     return acc;
   }, [checkInResults]);
