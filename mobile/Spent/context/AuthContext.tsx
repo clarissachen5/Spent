@@ -220,10 +220,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (profileDoc) {
           const d = profileDoc.data();
           setUserProfileState({
-            city:       d.city ?? '',
-            school:     d.school ?? '',
-            categories: d.categories ?? [],
-            goals:      d.goals ?? [],
+            city:         d.city ?? '',
+            school:       d.school ?? '',
+            categories:   d.categories ?? [],
+            goals:        d.goals ?? [],
+            pigName:      d.pigName,
+            userName:     d.userName,
+            userAge:      d.userAge,
+            annualIncome: d.annualIncome,
           });
         }
         const budgetDoc = budgetSnap.docs.find(d => d.id === budgetDocId);

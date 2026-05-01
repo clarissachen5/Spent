@@ -41,12 +41,12 @@ const GRAY_TEXT  = '#a5a5a5';
 
 // Pastel bg per category for check-in pills (image 5)
 const CATEGORY_PILL_BG: Record<string, string> = {
-  Food:           '#e4f3ff',
-  Shopping:       '#fff1d6',
+  'Eating Out':   '#e4f3ff',
+  Groceries:      '#e2f1d4',
   Coffee:         '#fde4ec',
-  Entertainment:  '#ece0f8',
   Transportation: '#ffe7d4',
-  Other:          '#fde0e0',
+  Entertainment:  '#ece0f8',
+  Shopping:       '#fff1d6',
 };
 // ─────────────────────────────────────────────────────────────────────────────
 

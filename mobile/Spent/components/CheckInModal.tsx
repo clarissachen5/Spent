@@ -439,12 +439,12 @@ function MissedExpensesCard({ onDone, onLog }: MissedExpensesCardProps) {
 const BUDGET_MAX = 1000; // will be replaced with user income later
 
 const BUDGET_CATEGORIES = [
-  { name: 'Food',           icon: foodIcon,           thumbIcon: foodTier2Icon,          color: '#A8EAF6', lightColor: '#E8F9FD' },
-  { name: 'Coffee',         icon: coffeeIcon,         thumbIcon: coffeeTier2Icon,         color: '#FFB5DB', lightColor: '#FFF0F8' },
-  { name: 'Shopping',       icon: bagIcon,            thumbIcon: shoppingTier2Icon,       color: '#FED130', lightColor: '#FFF6D6' },
-  { name: 'Entertainment',  icon: entertainmentIcon,  thumbIcon: entertainmentTier2Icon,  color: '#DEABFF', lightColor: '#F8EEFF' },
-  { name: 'Transportation', icon: transportationIcon, thumbIcon: transportationTier2Icon, color: '#FFCBA4', lightColor: '#FFF5EE' },
-  { name: 'Other',          icon: otherIcon,          thumbIcon: otherTier2Icon,          color: '#F4A0A0', lightColor: '#FEF0F0' },
+  { name: 'Eating Out',     icon: foodIcon,           thumbIcon: foodTier2Icon,           color: '#A8EAF6', lightColor: '#E8F9FD' },
+  { name: 'Groceries',      icon: bagIcon,            thumbIcon: shoppingTier2Icon,       color: '#A8D8A8', lightColor: '#E2F1D4' },
+  { name: 'Coffee',         icon: coffeeIcon,         thumbIcon: coffeeTier2Icon,          color: '#FFB5DB', lightColor: '#FFF0F8' },
+  { name: 'Transportation', icon: transportationIcon, thumbIcon: transportationTier2Icon,  color: '#FFCBA4', lightColor: '#FFF5EE' },
+  { name: 'Entertainment',  icon: entertainmentIcon,  thumbIcon: entertainmentTier2Icon,   color: '#DEABFF', lightColor: '#F8EEFF' },
+  { name: 'Shopping',       icon: shoppingIcon,       thumbIcon: shoppingTier2Icon,        color: '#FED130', lightColor: '#FFF6D6' },
 ];
 
 // ── Budget Slider ─────────────────────────────────────────────────────────────
@@ -527,11 +527,42 @@ const bsStyles = StyleSheet.create({
 
 
 function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
-  const { saveMonthlyBudget, monthlyBudget } = useAuth();
+  const { saveMonthlyBudget, monthlyBudget, userProfile } = useAuth();
+
+  // Merge preset categories with any custom ones from the user's profile
+  const allCategories = useMemo(() => {
+    const presetNames = new Set(BUDGET_CATEGORIES.map(c => c.name));
+    const custom = (userProfile?.categories ?? [])
+      .filter(name => !presetNames.has(name))
+      .map(name => ({
+        name,
+        icon: otherIcon,
+        thumbIcon: otherIcon,
+        color: '#B0C4B1',
+        lightColor: '#EEF3EE',
+      }));
+    return [...BUDGET_CATEGORIES, ...custom];
+  }, [userProfile?.categories]);
+
   const [amounts, setAmounts] = useState<Record<string, number>>(
-    Object.fromEntries(BUDGET_CATEGORIES.map(c => [c.name, Math.min(monthlyBudget[c.name] ?? 0, BUDGET_MAX)])),
+    Object.fromEntries(allCategories.map(c => [c.name, Math.min(monthlyBudget[c.name] ?? 0, BUDGET_MAX)])),
   );
   const [scrollEnabled, setScrollEnabled] = useState(true);
+
+  // Keep amounts in sync when custom categories are added after mount
+  const prevCats = useRef<string[]>([]);
+  useMemo(() => {
+    const names = allCategories.map(c => c.name);
+    const added = names.filter(n => !prevCats.current.includes(n));
+    if (added.length > 0) {
+      setAmounts(prev => {
+        const next = { ...prev };
+        added.forEach(n => { next[n] = Math.min(monthlyBudget[n] ?? 0, BUDGET_MAX); });
+        return next;
+      });
+    }
+    prevCats.current = names;
+  }, [allCategories]);
 
   const total = Object.values(amounts).reduce((s, v) => s + v, 0);
 
@@ -557,7 +588,7 @@ function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
         contentContainerStyle={{ gap: 10, paddingBottom: 8 }}
         scrollEnabled={scrollEnabled}
       >
-        {BUDGET_CATEGORIES.map(cat => (
+        {allCategories.map(cat => (
           <View key={cat.name} style={[budgetStyles.categoryRow, { borderColor: LIGHT_GRAY }]}>
             <View style={budgetStyles.categoryHeader}>
               <View style={[budgetStyles.iconWrap, { backgroundColor: cat.lightColor }]}>
@@ -682,11 +713,11 @@ const CATEGORY_ITEMS: Record<string, LocationItem[]> = {
   Other:          [{ icon: otherTier1Icon, label: 'small', price: 5 }, { icon: otherTier2Icon, label: 'medium', price: 15 }, { icon: otherTier3Icon, label: 'large', price: 30 }],
 };
 const CATEGORY_ICON: Record<string, any> = {
-  Coffee: coffeeIcon, Food: foodIcon, Shopping: shoppingIcon,
+  Coffee: coffeeIcon, 'Eating Out': foodIcon, Groceries: bagIcon, Shopping: shoppingIcon,
   Entertainment: entertainmentIcon, Transportation: transportationIcon, Other: otherIcon,
 };
 const CATEGORY_COLOR: Record<string, string> = {
-  Coffee: PINK_BG, Food: '#F5F0FF', Shopping: '#F0FBF5',
+  Coffee: PINK_BG, 'Eating Out': '#F5F0FF', Groceries: '#E2F1D4', Shopping: '#F0FBF5',
   Entertainment: '#F0F5FF', Transportation: '#FFFBF0', Other: '#FFFBF0',
 };
 

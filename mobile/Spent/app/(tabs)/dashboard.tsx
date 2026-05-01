@@ -1,10 +1,12 @@
 import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
+import { useAuth } from "../../context/AuthContext";
 
 
 export default function Dashboard() {
 const { token, amount, category } = useLocalSearchParams();
+const { checkInResults, userProfile, monthlyBudget } = useAuth();
 
 const [eventCounts, setEventCounts] = useState<{ [key: string]: number }>({});
 const [loading, setLoading] = useState(true);
@@ -18,34 +20,32 @@ const daysInMonth = new Date(year, month + 1, 0).getDate();
 
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const [spending, setSpending] = useState({
-    Fun: 12,
-    Groceries: 30,
-    Uber: 18,
-    Dining: 27,
-});
+// Compute actual spending per category from check-ins this month
+const categoryTotals = useMemo(() => {
+  const totals: Record<string, number> = {};
+  checkInResults.forEach(r => {
+    if (!r.visited) return;
+    const d = r.timestamp instanceof Date ? r.timestamp : new Date(r.timestamp);
+    if (d.getFullYear() !== year || d.getMonth() !== month) return;
+    totals[r.category] = (totals[r.category] ?? 0) + (r.amount ?? 0);
+  });
+  return totals;
+}, [checkInResults, year, month]);
 
-const totalSpent =
-    spending.Fun +
-    spending.Groceries +
-    spending.Uber +
-    spending.Dining;
+// All categories: profile categories first, then any check-in categories not in profile
+const allCategories = useMemo(() => {
+  const profileCats = userProfile?.categories ?? [];
+  const checkinCats = Object.keys(categoryTotals).filter(c => !profileCats.includes(c));
+  return [...profileCats, ...checkinCats];
+}, [userProfile?.categories, categoryTotals]);
+
+const totalSpent = Object.values(categoryTotals).reduce((s, v) => s + v, 0);
 
 
-// Add new spend from check-in
+// Bump today’s event count when navigating here from a check-in
 useEffect(() => {
     if (amount && category) {
-        const numericAmount = Number(amount);
-
-        setSpending((prev) => ({
-        ...prev,
-        [category as string]:
-            (prev[category as keyof typeof prev] || 0) + numericAmount,
-        }));
-
-        // ALSO increase today’s event count
         const todayStr = today.toISOString().split("T")[0];
-
         setEventCounts((prev) => ({
         ...prev,
         [todayStr]: (prev[todayStr] || 0) + 1,
@@ -76,7 +76,6 @@ useEffect(() => {
         const data = await response.json();
 
         const counts: { [key: string]: number } = {};
-        const groupedEvents = parseEvents(data.items || []);
 
         (data.items || []).forEach((event: any) => {
         const date =
@@ -154,25 +153,12 @@ const getColor = (count: number) => {
     <View style={styles.middleSection}>
         <Text style={styles.sectionTitle}>Spending Categories</Text>
 
-        <View style={styles.categoryRow}>
-        <Text>☕ Fun</Text>
-        <Text>${spending.Fun}</Text>
+        {allCategories.map(cat => (
+        <View key={cat} style={styles.categoryRow}>
+          <Text>{cat}</Text>
+          <Text>${(categoryTotals[cat] ?? 0).toFixed(0)}</Text>
         </View>
-
-        <View style={styles.categoryRow}>
-        <Text>${spending.Groceries}</Text>
-        <Text>$30</Text>
-        </View>
-
-        <View style={styles.categoryRow}>
-        <Text>${spending.Uber}</Text>
-        <Text>$18</Text>
-        </View>
-
-        <View style={styles.categoryRow}>
-        <Text>🍽 Dining</Text>
-        <Text>${spending.Dining}</Text>
-        </View>
+        ))}
 
         <View style={styles.predictionBox}>
         <Text style={styles.predictionText}>

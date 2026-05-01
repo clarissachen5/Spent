@@ -51,12 +51,12 @@ const calendarIcon       = require('../../assets/icons/calendarIcon.svg');
 const DAY_NAMES = ['Sun', 'Mon', 'Tues', 'Wed', 'Thurs', 'Fri', 'Sat'];
 
 const CATEGORY_CONFIG = [
-  { name: 'Food',           icon: foodIcon           },
-  { name: 'Shopping',       icon: shoppingIcon       },
+  { name: 'Eating Out',     icon: foodIcon           },
+  { name: 'Groceries',      icon: bagIcon            },
   { name: 'Coffee',         icon: coffeeIcon         },
-  { name: 'Entertainment',  icon: entertainmentIcon  },
   { name: 'Transportation', icon: transportationIcon },
-  { name: 'Other',          icon: otherIcon          },
+  { name: 'Entertainment',  icon: entertainmentIcon  },
+  { name: 'Shopping',       icon: shoppingIcon       },
 ];
 
 // Fallback max per category when no budget has been saved yet
@@ -64,28 +64,28 @@ const DEFAULT_CATEGORY_MAX = 100;
 
 // Per-category colors for the category bars (figma "April Spending" section)
 const CATEGORY_BAR: Record<string, string> = {
-  Food:           '#9ED3F0',
-  Shopping:       '#FCB842',
-  Coffee:         '#F4B8C8',
-  Entertainment:  '#C9A8E8',
-  Transportation: '#FFCBA4',
-  Other:          '#F4A0A0',
+  'Eating Out':    '#9ED3F0',
+  Groceries:       '#A8D8A8',
+  Coffee:          '#F4B8C8',
+  Transportation:  '#FFCBA4',
+  Entertainment:   '#C9A8E8',
+  Shopping:        '#FCB842',
 };
 const CATEGORY_TRACK: Record<string, string> = {
-  Food:           '#e4f3ff',
-  Shopping:       '#fff1d6',
-  Coffee:         '#fde4ec',
-  Entertainment:  '#ece0f8',
-  Transportation: '#ffe7d4',
-  Other:          '#fde0e0',
+  'Eating Out':    '#e4f3ff',
+  Groceries:       '#e2f1d4',
+  Coffee:          '#fde4ec',
+  Transportation:  '#ffe7d4',
+  Entertainment:   '#ece0f8',
+  Shopping:        '#fff1d6',
 };
 const CATEGORY_PILL_BG: Record<string, string> = {
-  Food:           '#e4f3ff',
-  Shopping:       '#fff1d6',
-  Coffee:         '#fde4ec',
-  Entertainment:  '#ece0f8',
-  Transportation: '#ffe7d4',
-  Other:          '#fde0e0',
+  'Eating Out':    '#e4f3ff',
+  Groceries:       '#e2f1d4',
+  Coffee:          '#fde4ec',
+  Transportation:  '#ffe7d4',
+  Entertainment:   '#ece0f8',
+  Shopping:        '#fff1d6',
 };
 
 // Returns 7 consecutive dates starting at today + dayOffset
@@ -166,11 +166,11 @@ export default function HomeScreen() {
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
     const map: Record<string, string> = {
-      Coffee:         'coffee_off',
-      Food:           'necklace_off',
-      Shopping:       'glasses_off',
-      Entertainment:  'crown_off',
-      Transportation: 'wings_off',
+      Coffee:          'coffee_off',
+      'Eating Out':    'necklace_off',
+      Shopping:        'glasses_off',
+      Entertainment:   'crown_off',
+      Transportation:  'wings_off',
     };
     const acc: Record<string, boolean> = {};
     Object.entries(map).forEach(([cat, input]) => {
@@ -433,10 +433,6 @@ export default function HomeScreen() {
         <View style={styles.predictivePill}>
           <Text style={styles.predictivePillText}>PREDICTIVE SPENDING</Text>
         </View>
-        <View style={styles.seeMorePillMuted}>
-          <Text style={styles.seeMoreTextMuted}>see more</Text>
-          <Image source={seeMoreArrow} style={styles.seeMoreArrowImg} contentFit="contain" />
-        </View>
       </View>
 
       <GestureDetector gesture={Gesture.Pan()
@@ -479,10 +475,6 @@ export default function HomeScreen() {
           <Text style={styles.predictivePillText}>
             {monthNameUpper} SPENDING
           </Text>
-        </View>
-        <View style={styles.seeMorePillMuted}>
-          <Text style={styles.seeMoreTextMuted}>see more</Text>
-          <Image source={seeMoreArrow} style={styles.seeMoreArrowImg} contentFit="contain" />
         </View>
       </View>
 

@@ -231,7 +231,7 @@ export default function SummaryScreen() {
   const mostFrequentedLoc  = locationStats.mostFrequent;
   const locationToAvoid    = locationStats.topSpend;
 
-  const displayName = userProfile?.school?.split(' ')[0] || 'Hello';
+  const displayName = userProfile?.userName || 'Hello';
 
   const tiles: {
     label: string;
@@ -304,9 +304,6 @@ export default function SummaryScreen() {
         <View style={styles.infoCard}>
           <View style={styles.nameRow}>
             <Text style={styles.userName}>{displayName}</Text>
-            <View style={styles.editDot}>
-              <Text style={styles.editDotText}>✎</Text>
-            </View>
           </View>
           <Text style={styles.spenderLine}>
             in {monthLabel} you were a <Text style={styles.spenderBold}>{spender}</Text>
