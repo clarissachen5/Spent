@@ -538,8 +538,8 @@ function BudgetEstimateCard({ onSave }: { onSave: () => void }) {
         name,
         icon: otherIcon,
         thumbIcon: otherIcon,
-        color: '#B0C4B1',
-        lightColor: '#EEF3EE',
+        color: '#F4A0A0',
+        lightColor: '#FDE0E0',
       }));
     return [...BUDGET_CATEGORIES, ...custom];
   }, [userProfile?.categories]);

@@ -62,6 +62,16 @@ const CATEGORY_CONFIG = [
 // Fallback max per category when no budget has been saved yet
 const DEFAULT_CATEGORY_MAX = 100;
 
+// Rotating color palette for upcoming expense cards
+const PRED_COLORS = [
+  { bg: '#eefbfd', bar: '#a8eaf6' },
+  { bg: '#fff6d6', bar: '#fed130' },
+  { bg: '#f8eeff', bar: '#deabff' },
+  { bg: '#fff0f8', bar: '#ffb5db' },
+  { bg: '#ffeddd', bar: '#ffcba4' },
+  { bg: '#e2f1d4', bar: '#a8d8a8' },
+];
+
 // Per-category colors for the category bars (figma "April Spending" section)
 const CATEGORY_BAR: Record<string, string> = {
   'Eating Out':    '#9ED3F0',
@@ -542,19 +552,32 @@ export default function HomeScreen() {
             .filter(p => p.date >= toDateStr(new Date()))
             .sort((a, b) => a.date.localeCompare(b.date))
             .slice(0, 10)
-            .map((p, i, arr) => (
-            <View key={i} style={[styles.predictionRow, i < arr.length - 1 && styles.categoryDivider]}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.predictionEvent}>{p.event}</Text>
-                <Text style={styles.predictionDate}>{p.date}</Text>
-              </View>
-              <View style={styles.predictionAmounts}>
-                <Text style={styles.predictionLow}>${Number(p.low?.amount ?? 0).toFixed(2)}</Text>
-                <Text style={styles.predictionMed}>${Number(p.medium?.amount ?? 0).toFixed(2)}</Text>
-                <Text style={styles.predictionHigh}>${Number(p.high?.amount ?? 0).toFixed(2)}</Text>
-              </View>
-            </View>
-          ))}
+            .map((p, i) => {
+              const palette = PRED_COLORS[i % PRED_COLORS.length];
+              const dateObj = new Date(p.date + 'T12:00:00');
+              const dateLabel = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              const dayLabel  = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+              const med = Number(p.medium?.amount ?? 0);
+              const medStr = med % 1 === 0 ? `$${med}` : `$${med.toFixed(2)}`;
+              return (
+                <View key={i} style={styles.upcomingRow}>
+                  <View style={[styles.upcomingDateBlock, { backgroundColor: palette.bg }]}>
+                    <View style={[styles.upcomingDateBar, { backgroundColor: palette.bar }]} />
+                    <View style={styles.upcomingDateTexts}>
+                      <Text style={styles.upcomingDateLine}>{dateLabel}</Text>
+                      <Text style={styles.upcomingDateLine}>{dayLabel}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.upcomingEvent} numberOfLines={2}>{p.event}</Text>
+                  <View style={[styles.upcomingAmtBox, { borderColor: '#0a2627' }]}>
+                    <Text style={styles.upcomingAmtTxt}>{medStr}</Text>
+                    <View style={[styles.upcomingAmtCircle, { backgroundColor: palette.bg }]}>
+                      <Text style={styles.upcomingAmtSparkle}>✦</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
         </View>
       )}
 
@@ -961,46 +984,73 @@ const styles = StyleSheet.create({
     height: 21.5,
   },
   predictionsCard: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 4,
-    gap: 7,
+    gap: 10,
   },
-  predictionRow: {
+  upcomingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    borderWidth: 1,
+    borderColor: '#eff0f0',
+    borderRadius: 10,
+    padding: 6,
   },
-  predictionEvent: {
-    fontSize: 12,
-    color: '#1e1d19',
-    fontWeight: '500',
-  },
-  predictionDate: {
-    fontSize: 10,
-    color: '#a5a5a5',
-  },
-  predictionAmounts: {
+  upcomingDateBlock: {
+    borderRadius: 5,
     flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     gap: 8,
+  },
+  upcomingDateBar: {
+    width: 3,
+    borderRadius: 2,
+  },
+  upcomingDateTexts: {
+    gap: 5,
+  },
+  upcomingDateLine: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#0a2627',
+  },
+  upcomingEvent: {
+    flex: 1,
+    fontSize: 10,
+    color: '#0a2627',
+  },
+  upcomingAmtBox: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 5,
+    borderWidth: 0.5,
+    borderRadius: 5,
+    paddingLeft: 10,
+    paddingRight: 6,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 0.5 },
+    elevation: 1,
   },
-  predictionLow: {
-    fontSize: 11,
-    color: '#0a542f',
+  upcomingAmtTxt: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#0a2627',
   },
-  predictionMed: {
-    fontSize: 11,
-    color: '#800039',
+  upcomingAmtCircle: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  predictionHigh: {
-    fontSize: 11,
-    color: '#4F090B',
+  upcomingAmtSparkle: {
+    fontSize: 8,
+    color: '#0a2627',
+    lineHeight: 10,
   },
   amountGroup: {
     flexDirection: 'row',
